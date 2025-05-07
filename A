@@ -76,7 +76,7 @@ openButton.MouseButton1Click:Connect(function()
 	menu.Visible = not menu.Visible
 end)
 
--- UI helper function
+-- UI helper functions
 local function createLabel(parent, text, position)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(0, 200, 0, 20)
@@ -93,7 +93,7 @@ local function createCheckbox(parent, position, default)
 	local box = Instance.new("TextButton")
 	box.Size = UDim2.new(0, 20, 0, 20)
 	box.Position = position
-	box.BackgroundColor3 = default and Color3.new(0, 1, 0) or Color3.new(0.3, 0.3, 0.3)
+	box.BackgroundColor3 = default and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
 	box.Text = ""
 	box.BorderColor3 = Color3.new(0, 0, 0)
 	box.Parent = parent
@@ -210,118 +210,95 @@ resetButton.MouseButton1Click:Connect(function()
 	highlightCheckbox.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 	currentHeadSize = getDefaultHeadSize()
 	headTransparency = 0
+	resetPlayerState()
 end)
 
--- Checkbox logic
-headCheckbox.MouseButton1Click:Connect(function()
-	headModEnabled = not headModEnabled
-	headCheckbox.BackgroundColor3 = headModEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
-end)
-
-highlightCheckbox.MouseButton1Click:Connect(function()
-	highlightEnabled = not highlightEnabled
-	highlightCheckbox.BackgroundColor3 = highlightEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
-end)
-
--- Function to apply head properties
+-- Functional
 local function applyHeadMod(player)
-	if player == LocalPlayer then return end
 	local char = player.Character
 	if not char then return end
-
 	local head = char:FindFirstChild("Head")
 	if head and head:IsA("BasePart") then
-		local rigType = char:FindFirstChildOfClass("Humanoid") and char:FindFirstChildOfClass("Humanoid").RigType
-		local baseSize = (rigType == Enum.HumanoidRigType.R15) and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
-
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		local baseSize = humanoid and humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
 		local sizeScale = getHeadSize()
 		head.Size = Vector3.new(baseSize.X * sizeScale, baseSize.Y * sizeScale, baseSize.Z * sizeScale)
 		head.Transparency = getTransparency()
-
-		if not head:FindFirstChild("OriginalColor") then
-			local color = Instance.new("Color3Value")
-			color.Name = "OriginalColor"
-			color.Value = head.Color
-			color.Parent = head
-		end
-		if not head:FindFirstChild("OriginalMaterial") then
-			local mat = Instance.new("StringValue")
-			mat.Name = "OriginalMaterial"
-			mat.Value = tostring(head.Material)
-			mat.Parent = head
-		end
-
-		head.Color = head.OriginalColor.Value
-		head.Material = Enum.Material[head.OriginalMaterial.Value]
+		head.BrickColor = BrickColor.new("Really red")
+		head.Material = Enum.Material.Neon
 		head.CanCollide = false
 		head.Massless = true
 	end
 end
 
--- Function to create/update highlight
 local function applyHighlight(player)
-	if player == LocalPlayer then return end
 	local char = player.Character
 	if not char then return end
-
-	local existing = char:FindFirstChildOfClass("Highlight")
+	local existing = char:FindFirstChild("ClientESP")
 	if existing then existing:Destroy() end
+	local hl = Instance.new("Highlight")
+	hl.Name = "ClientESP"
+	hl.Adornee = char
+	hl.FillTransparency = 1
+	hl.OutlineTransparency = 0
+	hl.OutlineColor = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
+	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	hl.Parent = char
+end
 
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "ClientESP"
-	highlight.Adornee = char
-	highlight.FillTransparency = 1
-	highlight.OutlineTransparency = 0
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+-- Optimized update system
+local processedHeads = {}
+local processedHighlights = {}
 
-	if player.Team then
-		highlight.OutlineColor = player.Team.TeamColor.Color
-	else
-		highlight.OutlineColor = Color3.new(1, 1, 1)
+local function onCharacterAdded(player, character)
+	task.wait(1)
+	if highlightEnabled and not processedHighlights[player] then
+		applyHighlight(player)
+		processedHighlights[player] = true
 	end
-
-	highlight.Parent = char
+	if headModEnabled and not processedHeads[player] then
+		applyHeadMod(player)
+		processedHeads[player] = true
+	end
 end
 
--- CharacterAdded hook
-local function hookPlayer(player)
-	player.CharacterAdded:Connect(function()
-		task.wait(1)
-		if highlightEnabled then applyHighlight(player) end
-	end)
+function resetPlayerState()
+	processedHeads = {}
+	processedHighlights = {}
+	for _, player in pairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			onCharacterAdded(player, player.Character)
+		end
+	end
 end
 
--- Apply existing players
 for _, p in pairs(Players:GetPlayers()) do
 	if p ~= LocalPlayer then
-		hookPlayer(p)
+		p.CharacterAdded:Connect(function(char)
+			onCharacterAdded(p, char)
+		end)
+		if p.Character then
+			onCharacterAdded(p, p.Character)
+		end
 	end
 end
 
--- New players
-Players.PlayerAdded:Connect(function(player)
-	if player ~= LocalPlayer then
-		hookPlayer(player)
+Players.PlayerAdded:Connect(function(p)
+	if p ~= LocalPlayer then
+		p.CharacterAdded:Connect(function(char)
+			onCharacterAdded(p, char)
+		end)
 	end
 end)
 
--- Continuous updater
-RunService.RenderStepped:Connect(function()
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player ~= LocalPlayer then
-			if headModEnabled then
-				pcall(function()
-					applyHeadMod(player)
-				end)
-			end
-			if highlightEnabled then
-				pcall(function()
-					local char = player.Character
-					if char and not char:FindFirstChild("ClientESP") then
-						applyHighlight(player)
-					end
-				end)
-			end
-		end
-	end
+headCheckbox.MouseButton1Click:Connect(function()
+	headModEnabled = not headModEnabled
+	headCheckbox.BackgroundColor3 = headModEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+	resetPlayerState()
+end)
+
+highlightCheckbox.MouseButton1Click:Connect(function()
+	highlightEnabled = not highlightEnabled
+	highlightCheckbox.BackgroundColor3 = highlightEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+	resetPlayerState()
 end)
