@@ -1,0 +1,327 @@
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+-- Settings
+local DEFAULT_HEAD_SIZE_R15 = Vector3.new(1.198, 1.202, 1.198)
+local DEFAULT_HEAD_SIZE_R6 = Vector3.new(2, 1, 1)
+local DEFAULT_KEY = Enum.KeyCode.LeftAlt
+local keybind = DEFAULT_KEY
+
+local function getDefaultHeadSize()
+	local char = LocalPlayer.Character
+	if char and char:FindFirstChild("Humanoid") then
+		return char.Humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
+	end
+	return DEFAULT_HEAD_SIZE_R15
+end
+
+local defaultHeadSize = getDefaultHeadSize()
+local currentHeadSize = defaultHeadSize
+local headTransparency = 0
+local headModEnabled = false
+local highlightEnabled = false
+local menuVisible = false
+
+-- GUI Setup
+local gui = Instance.new("ScreenGui")
+gui.Name = "ClientESP_UI"
+gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Open Menu button
+local openButton = Instance.new("TextButton")
+openButton.Size = UDim2.new(0, 100, 0, 40)
+openButton.Position = UDim2.new(0, 10, 0, 10)
+openButton.Text = "Open Menu"
+openButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+openButton.TextColor3 = Color3.new(1, 1, 1)
+openButton.Active = true
+openButton.Draggable = true
+openButton.Parent = gui
+
+-- Main Menu
+local menu = Instance.new("Frame")
+menu.Size = UDim2.new(0, 250, 0, 270)
+menu.Position = UDim2.new(0, 10, 0, 60)
+menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+menu.Visible = false
+menu.Active = true
+menu.Draggable = true
+menu.Parent = gui
+
+-- Clamp GUI frames to screen
+RunService.RenderStepped:Connect(function()
+	for _, frame in ipairs({menu, openButton}) do
+		if frame.Visible then
+			local pos = frame.AbsolutePosition
+			local size = frame.AbsoluteSize
+			local guiSize = gui.AbsoluteSize
+			frame.Position = UDim2.new(0, math.clamp(pos.X, 0, guiSize.X - size.X), 0, math.clamp(pos.Y, 0, guiSize.Y - size.Y))
+		end
+	end
+end)
+
+-- Toggle Menu by Keybind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if not gameProcessed and input.KeyCode == keybind then
+		menu.Visible = not menu.Visible
+	end
+end)
+
+-- Button toggle
+openButton.MouseButton1Click:Connect(function()
+	menu.Visible = not menu.Visible
+end)
+
+-- UI helper function
+local function createLabel(parent, text, position)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0, 200, 0, 20)
+	label.Position = position
+	label.Text = text
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.BackgroundTransparency = 1
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = parent
+	return label
+end
+
+local function createCheckbox(parent, position, default)
+	local box = Instance.new("TextButton")
+	box.Size = UDim2.new(0, 20, 0, 20)
+	box.Position = position
+	box.BackgroundColor3 = default and Color3.new(0, 1, 0) or Color3.new(0.3, 0.3, 0.3)
+	box.Text = ""
+	box.BorderColor3 = Color3.new(0, 0, 0)
+	box.Parent = parent
+	return box
+end
+
+local function createSlider(parent, position, min, max, default)
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(0, 200, 0, 20)
+	frame.Position = position
+	frame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	frame.BorderSizePixel = 0
+	frame.Parent = parent
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new((default - min)/(max - min), 0, 1, 0)
+	fill.Position = UDim2.new(0, 0, 0, 0)
+	fill.BackgroundColor3 = Color3.fromRGB(120, 120, 255)
+	fill.BorderSizePixel = 0
+	fill.Parent = frame
+
+	local dragging = false
+	local value = default
+
+	local function updateValue(x)
+		local relX = math.clamp((x - frame.AbsolutePosition.X) / frame.AbsoluteSize.X, 0, 1)
+		fill.Size = UDim2.new(relX, 0, 1, 0)
+		value = min + relX * (max - min)
+	end
+
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			updateValue(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			updateValue(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	return function()
+		return value
+	end
+end
+
+-- UI Elements
+createLabel(menu, "Head Mod:", UDim2.new(0, 10, 0, 10))
+local headCheckbox = createCheckbox(menu, UDim2.new(0, 90, 0, 10), false)
+
+createLabel(menu, "Highlight:", UDim2.new(0, 10, 0, 40))
+local highlightCheckbox = createCheckbox(menu, UDim2.new(0, 90, 0, 40), false)
+
+createLabel(menu, "Head Size:", UDim2.new(0, 10, 0, 70))
+local getHeadSize = createSlider(menu, UDim2.new(0, 10, 0, 90), 1, 30, defaultHeadSize.X)
+
+createLabel(menu, "Head Transparency:", UDim2.new(0, 10, 0, 120))
+local getTransparency = createSlider(menu, UDim2.new(0, 10, 0, 140), 0, 1, headTransparency)
+
+-- Keybind Controls
+createLabel(menu, "Toggle Keybind:", UDim2.new(0, 10, 0, 170))
+local keyLabel = Instance.new("TextLabel")
+keyLabel.Size = UDim2.new(0, 100, 0, 20)
+keyLabel.Position = UDim2.new(0, 120, 0, 170)
+keyLabel.Text = keybind.Name
+keyLabel.TextColor3 = Color3.new(1, 1, 1)
+keyLabel.BackgroundTransparency = 1
+keyLabel.Parent = menu
+
+local keyBox = Instance.new("TextBox")
+keyBox.Size = UDim2.new(0, 200, 0, 25)
+keyBox.Position = UDim2.new(0, 10, 0, 200)
+keyBox.PlaceholderText = "Press any key..."
+keyBox.Text = ""
+keyBox.ClearTextOnFocus = false
+keyBox.TextColor3 = Color3.new(1, 1, 1)
+keyBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+keyBox.Parent = menu
+
+keyBox.Focused:Connect(function()
+	local conn
+	conn = UserInputService.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			keybind = input.KeyCode
+			keyLabel.Text = keybind.Name
+			keyBox.Text = ""
+			keyBox:ReleaseFocus()
+			conn:Disconnect()
+		end
+	end)
+end)
+
+-- Reset Button
+local resetButton = Instance.new("TextButton")
+resetButton.Size = UDim2.new(0, 200, 0, 30)
+resetButton.Position = UDim2.new(0, 10, 0, 230)
+resetButton.Text = "Reset to Default"
+resetButton.BackgroundColor3 = Color3.fromRGB(100, 30, 30)
+resetButton.TextColor3 = Color3.new(1, 1, 1)
+resetButton.Parent = menu
+
+resetButton.MouseButton1Click:Connect(function()
+	headModEnabled = false
+	highlightEnabled = false
+	headCheckbox.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	highlightCheckbox.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	currentHeadSize = getDefaultHeadSize()
+	headTransparency = 0
+end)
+
+-- Checkbox logic
+headCheckbox.MouseButton1Click:Connect(function()
+	headModEnabled = not headModEnabled
+	headCheckbox.BackgroundColor3 = headModEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+end)
+
+highlightCheckbox.MouseButton1Click:Connect(function()
+	highlightEnabled = not highlightEnabled
+	highlightCheckbox.BackgroundColor3 = highlightEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+end)
+
+-- Function to apply head properties
+local function applyHeadMod(player)
+	if player == LocalPlayer then return end
+	local char = player.Character
+	if not char then return end
+
+	local head = char:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		local rigType = char:FindFirstChildOfClass("Humanoid") and char:FindFirstChildOfClass("Humanoid").RigType
+		local baseSize = (rigType == Enum.HumanoidRigType.R15) and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
+
+		local sizeScale = getHeadSize()
+		head.Size = Vector3.new(baseSize.X * sizeScale, baseSize.Y * sizeScale, baseSize.Z * sizeScale)
+		head.Transparency = getTransparency()
+
+		if not head:FindFirstChild("OriginalColor") then
+			local color = Instance.new("Color3Value")
+			color.Name = "OriginalColor"
+			color.Value = head.Color
+			color.Parent = head
+		end
+		if not head:FindFirstChild("OriginalMaterial") then
+			local mat = Instance.new("StringValue")
+			mat.Name = "OriginalMaterial"
+			mat.Value = tostring(head.Material)
+			mat.Parent = head
+		end
+
+		head.Color = head.OriginalColor.Value
+		head.Material = Enum.Material[head.OriginalMaterial.Value]
+		head.CanCollide = false
+		head.Massless = true
+	end
+end
+
+-- Function to create/update highlight
+local function applyHighlight(player)
+	if player == LocalPlayer then return end
+	local char = player.Character
+	if not char then return end
+
+	local existing = char:FindFirstChildOfClass("Highlight")
+	if existing then existing:Destroy() end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ClientESP"
+	highlight.Adornee = char
+	highlight.FillTransparency = 1
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+
+	if player.Team then
+		highlight.OutlineColor = player.Team.TeamColor.Color
+	else
+		highlight.OutlineColor = Color3.new(1, 1, 1)
+	end
+
+	highlight.Parent = char
+end
+
+-- CharacterAdded hook
+local function hookPlayer(player)
+	player.CharacterAdded:Connect(function()
+		task.wait(1)
+		if highlightEnabled then applyHighlight(player) end
+	end)
+end
+
+-- Apply existing players
+for _, p in pairs(Players:GetPlayers()) do
+	if p ~= LocalPlayer then
+		hookPlayer(p)
+	end
+end
+
+-- New players
+Players.PlayerAdded:Connect(function(player)
+	if player ~= LocalPlayer then
+		hookPlayer(player)
+	end
+end)
+
+-- Continuous updater
+RunService.RenderStepped:Connect(function()
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer then
+			if headModEnabled then
+				pcall(function()
+					applyHeadMod(player)
+				end)
+			end
+			if highlightEnabled then
+				pcall(function()
+					local char = player.Character
+					if char and not char:FindFirstChild("ClientESP") then
+						applyHighlight(player)
+					end
+				end)
+			end
+		end
+	end
+end)
