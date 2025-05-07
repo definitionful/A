@@ -10,7 +10,6 @@ local DEFAULT_HEAD_SIZE_R6 = Vector3.new(2, 1, 1)
 local DEFAULT_KEY = Enum.KeyCode.LeftAlt
 local keybind = DEFAULT_KEY
 
--- Variables
 local function getDefaultHeadSize()
 	local char = LocalPlayer.Character
 	if char and char:FindFirstChild("Humanoid") then
@@ -25,13 +24,15 @@ local headTransparency = 0
 local headModEnabled = false
 local highlightEnabled = false
 local menuVisible = false
+local isDraggingSlider = false
 
 -- GUI Setup
-local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+local gui = Instance.new("ScreenGui")
 gui.Name = "ClientESP_UI"
 gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Open Menu Button
+-- Open Menu button
 local openButton = Instance.new("TextButton")
 openButton.Size = UDim2.new(0, 100, 0, 40)
 openButton.Position = UDim2.new(0, 10, 0, 10)
@@ -46,9 +47,42 @@ menu.Size = UDim2.new(0, 250, 0, 270)
 menu.Position = UDim2.new(0, 10, 0, 60)
 menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 menu.Visible = false
-menu.Active = true
-menu.Draggable = true
 menu.Parent = gui
+
+-- Draggable logic with lock when slider active
+local function makeDraggable(frame)
+	local dragging, dragInput, dragStart, startPos
+
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 and not isDraggingSlider then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	frame.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
+
+makeDraggable(menu)
+makeDraggable(openButton)
 
 -- Clamp GUI inside screen bounds
 RunService.RenderStepped:Connect(function()
@@ -62,50 +96,52 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
--- Toggle menu visibility
+-- Toggle Menu by Keybind
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed and input.KeyCode == keybind then
 		menu.Visible = not menu.Visible
 	end
 end)
 
+-- Button toggle
 openButton.MouseButton1Click:Connect(function()
 	menu.Visible = not menu.Visible
 end)
 
--- UI Creator Helpers
-local function createLabel(parent, text, pos)
+-- UI helpers
+local function createLabel(parent, text, position)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(0, 200, 0, 20)
-	label.Position = pos
+	label.Position = position
 	label.Text = text
-	label.BackgroundTransparency = 1
 	label.TextColor3 = Color3.new(1, 1, 1)
+	label.BackgroundTransparency = 1
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.Parent = parent
 	return label
 end
 
-local function createCheckbox(parent, pos, default)
+local function createCheckbox(parent, position, default)
 	local box = Instance.new("TextButton")
 	box.Size = UDim2.new(0, 20, 0, 20)
-	box.Position = pos
-	box.BackgroundColor3 = default and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+	box.Position = position
+	box.BackgroundColor3 = default and Color3.new(0, 1, 0) or Color3.new(0.3, 0.3, 0.3)
 	box.Text = ""
+	box.BorderColor3 = Color3.new(0, 0, 0)
 	box.Parent = parent
 	return box
 end
 
-local function createSlider(parent, pos, min, max, default)
+local function createSlider(parent, position, min, max, default)
 	local frame = Instance.new("Frame")
 	frame.Size = UDim2.new(0, 200, 0, 20)
-	frame.Position = pos
+	frame.Position = position
 	frame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	frame.BorderSizePixel = 0
 	frame.Parent = parent
 
 	local fill = Instance.new("Frame")
-	fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+	fill.Size = UDim2.new((default - min)/(max - min), 0, 1, 0)
 	fill.Position = UDim2.new(0, 0, 0, 0)
 	fill.BackgroundColor3 = Color3.fromRGB(120, 120, 255)
 	fill.BorderSizePixel = 0
@@ -114,7 +150,7 @@ local function createSlider(parent, pos, min, max, default)
 	local dragging = false
 	local value = default
 
-	local function update(x)
+	local function updateValue(x)
 		local relX = math.clamp((x - frame.AbsolutePosition.X) / frame.AbsoluteSize.X, 0, 1)
 		fill.Size = UDim2.new(relX, 0, 1, 0)
 		value = min + relX * (max - min)
@@ -123,19 +159,21 @@ local function createSlider(parent, pos, min, max, default)
 	frame.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = true
-			update(input.Position.X)
+			isDraggingSlider = true
+			updateValue(input.Position.X)
 		end
 	end)
 
 	UserInputService.InputChanged:Connect(function(input)
 		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-			update(input.Position.X)
+			updateValue(input.Position.X)
 		end
 	end)
 
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = false
+			isDraggingSlider = false
 		end
 	end)
 
@@ -170,6 +208,7 @@ local keyBox = Instance.new("TextBox")
 keyBox.Size = UDim2.new(0, 200, 0, 25)
 keyBox.Position = UDim2.new(0, 10, 0, 200)
 keyBox.PlaceholderText = "Press any key..."
+keyBox.Text = ""
 keyBox.ClearTextOnFocus = false
 keyBox.TextColor3 = Color3.new(1, 1, 1)
 keyBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -181,6 +220,7 @@ keyBox.Focused:Connect(function()
 		if input.UserInputType == Enum.UserInputType.Keyboard then
 			keybind = input.KeyCode
 			keyLabel.Text = keybind.Name
+			keyBox.Text = ""
 			keyBox:ReleaseFocus()
 			conn:Disconnect()
 		end
@@ -199,13 +239,13 @@ resetButton.Parent = menu
 resetButton.MouseButton1Click:Connect(function()
 	headModEnabled = false
 	highlightEnabled = false
-	currentHeadSize = getDefaultHeadSize()
-	headTransparency = 0
 	headCheckbox.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 	highlightCheckbox.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	currentHeadSize = getDefaultHeadSize()
+	headTransparency = 0
 end)
 
--- Toggle Logic
+-- Checkbox logic
 headCheckbox.MouseButton1Click:Connect(function()
 	headModEnabled = not headModEnabled
 	headCheckbox.BackgroundColor3 = headModEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
@@ -216,76 +256,66 @@ highlightCheckbox.MouseButton1Click:Connect(function()
 	highlightCheckbox.BackgroundColor3 = highlightEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
 end)
 
--- Apply Head Mod
-local function applyHeadMod(player)
-	local char = player.Character
-	if not char then return end
+-- Head mod + highlight application
+local function applyHeadMod(char)
 	local head = char:FindFirstChild("Head")
-	local hum = char:FindFirstChild("Humanoid")
-	if not head or not hum then return end
+	if head and head:IsA("BasePart") then
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		local rigType = humanoid and humanoid.RigType
+		local baseSize = rigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
 
-	local baseSize = hum.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
-	local sizeScale = getHeadSize()
-
-	local color = head.BrickColor
-	local material = head.Material
-
-	head.Size = baseSize * sizeScale
-	head.Transparency = getTransparency()
-	head.BrickColor = color
-	head.Material = material
-	head.CanCollide = false
-	head.Massless = true
+		local scale = getHeadSize()
+		head.Size = baseSize * scale
+		head.Transparency = getTransparency()
+		head.BrickColor = BrickColor.new("Really red")
+		head.Material = Enum.Material.Neon
+		head.Massless = true
+		head.CanCollide = false
+	end
 end
 
--- Apply Highlight
-local function applyHighlight(player)
-	local char = player.Character
-	if not char then return end
-	local existing = char:FindFirstChildOfClass("Highlight")
+local function applyHighlight(char, teamColor)
+	local existing = char:FindFirstChild("ClientESP")
 	if existing then existing:Destroy() end
 
-	local hl = Instance.new("Highlight")
-	hl.Name = "ClientESP"
-	hl.Adornee = char
-	hl.FillTransparency = 1
-	hl.OutlineTransparency = 0
-	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	hl.OutlineColor = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
-	hl.Parent = char
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ClientESP"
+	highlight.Adornee = char
+	highlight.FillTransparency = 1
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.OutlineColor = teamColor or Color3.new(1, 1, 1)
+	highlight.Parent = char
 end
 
--- Auto apply for all players
+-- Fast update
 RunService.Heartbeat:Connect(function()
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer then
 			local char = player.Character
 			if char then
-				if headModEnabled then applyHeadMod(player) end
+				if headModEnabled then
+					pcall(function()
+						applyHeadMod(char)
+					end)
+				end
 				if highlightEnabled and not char:FindFirstChild("ClientESP") then
-					applyHighlight(player)
+					pcall(function()
+						local color = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
+						applyHighlight(char, color)
+					end)
 				end
 			end
 		end
 	end
 end)
 
--- Hook CharacterAdded
-local function hookPlayer(player)
-	player.CharacterAdded:Connect(function()
-		task.wait(1)
-		if highlightEnabled then applyHighlight(player) end
-	end)
-end
-
-for _, player in ipairs(Players:GetPlayers()) do
-	if player ~= LocalPlayer then
-		hookPlayer(player)
-	end
-end
-
+-- Hook new players
 Players.PlayerAdded:Connect(function(player)
-	if player ~= LocalPlayer then
-		hookPlayer(player)
-	end
+	player.CharacterAdded:Connect(function(char)
+		task.wait(1)
+		if highlightEnabled then
+			applyHighlight(char, player.Team and player.Team.TeamColor.Color)
+		end
+	end)
 end)
