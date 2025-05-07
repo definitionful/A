@@ -1,10 +1,9 @@
 -- Services
 local Players = game:GetService("Players")
-local Teams = game:GetService("Teams")
 local RunService = game:GetService("RunService")
-local Lighting = game:GetService("Lighting")
 local UserInputService = game:GetService("UserInputService")
-
+local Lighting = game:GetService("Lighting")
+local Teams = game:GetService("Teams")
 local LocalPlayer = Players.LocalPlayer
 
 -- Settings
@@ -13,8 +12,8 @@ local DEFAULT_HEAD_SIZE_R6 = Vector3.new(2, 1, 1)
 local DEFAULT_KEY = Enum.KeyCode.LeftAlt
 local keybind = DEFAULT_KEY
 local ignoredTeams = {}
+local ignoreOwnTeam = false
 local fullBrightEnabled = false
-local teamDropdownOpen = false
 
 -- Variables
 local function getDefaultHeadSize()
@@ -28,14 +27,15 @@ end
 local defaultHeadSize = getDefaultHeadSize()
 local headModEnabled = false
 local highlightEnabled = false
+local menuVisible = false
 
 -- GUI
-local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+local gui = Instance.new("ScreenGui")
 gui.Name = "ClientESP_UI"
 gui.ResetOnSpawn = false
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Open Button
-local openButton = Instance.new("TextButton", gui)
+local openButton = Instance.new("TextButton")
 openButton.Size = UDim2.new(0, 100, 0, 40)
 openButton.Position = UDim2.new(0, 10, 0, 10)
 openButton.Text = "Open Menu"
@@ -43,17 +43,18 @@ openButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 openButton.TextColor3 = Color3.new(1, 1, 1)
 openButton.Active = true
 openButton.Draggable = true
+openButton.Parent = gui
 
--- Main Menu
-local menu = Instance.new("Frame", gui)
-menu.Size = UDim2.new(0, 250, 0, 350)
+local menu = Instance.new("Frame")
+menu.Size = UDim2.new(0, 250, 0, 450)
 menu.Position = UDim2.new(0, 10, 0, 60)
 menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 menu.Visible = false
 menu.Active = true
 menu.Draggable = true
+menu.Parent = gui
 
--- Keep GUI on screen
+-- Clamp GUI
 RunService.RenderStepped:Connect(function()
 	for _, frame in ipairs({menu, openButton}) do
 		if frame.Visible then
@@ -65,57 +66,57 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
--- Toggle Menu Keybind
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if not gameProcessed and input.KeyCode == keybind then
+-- Toggle
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if not gpe and input.KeyCode == keybind then
 		menu.Visible = not menu.Visible
 	end
 end)
-
 openButton.MouseButton1Click:Connect(function()
 	menu.Visible = not menu.Visible
 end)
 
--- GUI Utility
-local function createLabel(text, y)
-	local lbl = Instance.new("TextLabel", menu)
-	lbl.Position = UDim2.new(0, 10, 0, y)
-	lbl.Size = UDim2.new(0, 200, 0, 20)
-	lbl.BackgroundTransparency = 1
-	lbl.TextColor3 = Color3.new(1, 1, 1)
-	lbl.Text = text
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	return lbl
+-- Helpers
+local function createLabel(parent, text, pos)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0, 200, 0, 20)
+	label.Position = pos
+	label.Text = text
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.BackgroundTransparency = 1
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = parent
 end
 
-local function createCheckbox(y, onToggle)
-	local box = Instance.new("TextButton", menu)
-	box.Size = UDim2.new(0, 20, 0, 20)
-	box.Position = UDim2.new(0, 90, 0, y)
-	box.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-	box.BorderColor3 = Color3.new(0, 0, 0)
-	box.Text = ""
-	box.MouseButton1Click:Connect(function()
-		local enabled = onToggle()
-		box.BackgroundColor3 = enabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
-	end)
-	return box
+local function createCheckbox(parent, pos, default)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 20, 0, 20)
+	btn.Position = pos
+	btn.BackgroundColor3 = default and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+	btn.Text = ""
+	btn.BorderColor3 = Color3.new(0, 0, 0)
+	btn.Parent = parent
+	return btn
 end
 
-local function createSlider(y, min, max, default)
-	local frame = Instance.new("Frame", menu)
-	frame.Position = UDim2.new(0, 10, 0, y)
+local function createSlider(parent, pos, min, max, default)
+	local frame = Instance.new("Frame")
 	frame.Size = UDim2.new(0, 200, 0, 20)
+	frame.Position = pos
 	frame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+	frame.BorderSizePixel = 0
+	frame.Parent = parent
 
-	local fill = Instance.new("Frame", frame)
-	fill.Size = UDim2.new((default - min)/(max - min), 0, 1, 0)
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
 	fill.BackgroundColor3 = Color3.fromRGB(120, 120, 255)
+	fill.BorderSizePixel = 0
+	fill.Parent = frame
 
-	local value = default
 	local dragging = false
+	local value = default
 
-	local function update(x)
+	local function updateValue(x)
 		local relX = math.clamp((x - frame.AbsolutePosition.X) / frame.AbsoluteSize.X, 0, 1)
 		fill.Size = UDim2.new(relX, 0, 1, 0)
 		value = min + relX * (max - min)
@@ -124,13 +125,13 @@ local function createSlider(y, min, max, default)
 	frame.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			dragging = true
-			update(input.Position.X)
+			updateValue(input.Position.X)
 		end
 	end)
 
 	UserInputService.InputChanged:Connect(function(input)
 		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-			update(input.Position.X)
+			updateValue(input.Position.X)
 		end
 	end)
 
@@ -140,50 +141,48 @@ local function createSlider(y, min, max, default)
 		end
 	end)
 
-	return function() return value end
+	return function()
+		return value
+	end
 end
 
--- Controls
-createLabel("Head Mod:", 10)
-createCheckbox(10, function()
-	headModEnabled = not headModEnabled
-	return headModEnabled
-end)
+-- UI elements
+createLabel(menu, "Head Mod:", UDim2.new(0, 10, 0, 10))
+local headCheckbox = createCheckbox(menu, UDim2.new(0, 90, 0, 10), false)
 
-createLabel("Highlight:", 40)
-createCheckbox(40, function()
-	highlightEnabled = not highlightEnabled
-	return highlightEnabled
-end)
+createLabel(menu, "Highlight:", UDim2.new(0, 10, 0, 40))
+local highlightCheckbox = createCheckbox(menu, UDim2.new(0, 90, 0, 40), false)
 
-createLabel("Full Bright:", 70)
-createCheckbox(70, function()
-	fullBrightEnabled = not fullBrightEnabled
-	return fullBrightEnabled
-end)
+createLabel(menu, "Full Bright:", UDim2.new(0, 10, 0, 70))
+local fullBrightCheckbox = createCheckbox(menu, UDim2.new(0, 90, 0, 70), false)
 
-createLabel("Head Size:", 100)
-local getHeadSize = createSlider(120, 1, 30, defaultHeadSize.X)
+createLabel(menu, "Ignore Own Team:", UDim2.new(0, 10, 0, 100))
+local ownTeamCheckbox = createCheckbox(menu, UDim2.new(0, 150, 0, 100), false)
 
-createLabel("Transparency:", 150)
-local getTransparency = createSlider(170, 0, 1, 0)
+createLabel(menu, "Head Size:", UDim2.new(0, 10, 0, 130))
+local getHeadSize = createSlider(menu, UDim2.new(0, 10, 0, 150), 1, 30, defaultHeadSize.X)
 
--- Keybind Setup
-createLabel("Toggle Keybind:", 200)
-local keyLabel = Instance.new("TextLabel", menu)
-keyLabel.Position = UDim2.new(0, 120, 0, 200)
+createLabel(menu, "Head Transparency:", UDim2.new(0, 10, 0, 180))
+local getTransparency = createSlider(menu, UDim2.new(0, 10, 0, 200), 0, 1, 0)
+
+createLabel(menu, "Toggle Keybind:", UDim2.new(0, 10, 0, 230))
+local keyLabel = Instance.new("TextLabel")
 keyLabel.Size = UDim2.new(0, 100, 0, 20)
+keyLabel.Position = UDim2.new(0, 120, 0, 230)
 keyLabel.Text = keybind.Name
-keyLabel.BackgroundTransparency = 1
 keyLabel.TextColor3 = Color3.new(1, 1, 1)
+keyLabel.BackgroundTransparency = 1
+keyLabel.Parent = menu
 
-local keyBox = Instance.new("TextBox", menu)
-keyBox.Position = UDim2.new(0, 10, 0, 230)
+local keyBox = Instance.new("TextBox")
 keyBox.Size = UDim2.new(0, 200, 0, 25)
+keyBox.Position = UDim2.new(0, 10, 0, 260)
 keyBox.PlaceholderText = "Press any key..."
+keyBox.Text = ""
 keyBox.ClearTextOnFocus = false
 keyBox.TextColor3 = Color3.new(1, 1, 1)
 keyBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+keyBox.Parent = menu
 
 keyBox.Focused:Connect(function()
 	local conn
@@ -191,76 +190,75 @@ keyBox.Focused:Connect(function()
 		if input.UserInputType == Enum.UserInputType.Keyboard then
 			keybind = input.KeyCode
 			keyLabel.Text = keybind.Name
+			keyBox.Text = ""
 			keyBox:ReleaseFocus()
 			conn:Disconnect()
 		end
 	end)
 end)
 
--- Reset
-local resetButton = Instance.new("TextButton", menu)
-resetButton.Position = UDim2.new(0, 10, 0, 265)
+local resetButton = Instance.new("TextButton")
 resetButton.Size = UDim2.new(0, 200, 0, 30)
+resetButton.Position = UDim2.new(0, 10, 0, 290)
 resetButton.Text = "Reset to Default"
 resetButton.BackgroundColor3 = Color3.fromRGB(100, 30, 30)
 resetButton.TextColor3 = Color3.new(1, 1, 1)
+resetButton.Parent = menu
+
 resetButton.MouseButton1Click:Connect(function()
 	headModEnabled = false
 	highlightEnabled = false
 	fullBrightEnabled = false
+	ignoreOwnTeam = false
 	ignoredTeams = {}
+	headCheckbox.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	highlightCheckbox.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	fullBrightCheckbox.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	ownTeamCheckbox.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 end)
 
--- Dropdown for ignoring teams
-createLabel("Ignore Team (Head):", 305)
-local dropdown = Instance.new("TextButton", menu)
-dropdown.Size = UDim2.new(0, 200, 0, 25)
-dropdown.Position = UDim2.new(0, 10, 0, 325)
-dropdown.Text = "Select team to ignore..."
-dropdown.TextColor3 = Color3.new(1, 1, 1)
-dropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+-- Checkbox logic
+headCheckbox.MouseButton1Click:Connect(function()
+	headModEnabled = not headModEnabled
+	headCheckbox.BackgroundColor3 = headModEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+end)
 
-local function toggleTeamIgnore(teamName)
-	if ignoredTeams[teamName] then
-		ignoredTeams[teamName] = nil
+highlightCheckbox.MouseButton1Click:Connect(function()
+	highlightEnabled = not highlightEnabled
+	highlightCheckbox.BackgroundColor3 = highlightEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+end)
+
+fullBrightCheckbox.MouseButton1Click:Connect(function()
+	fullBrightEnabled = not fullBrightEnabled
+	fullBrightCheckbox.BackgroundColor3 = fullBrightEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+	if fullBrightEnabled then
+		Lighting.Brightness = 3
+		Lighting.ClockTime = 14
+		Lighting.FogEnd = 100000
 	else
-		ignoredTeams[teamName] = true
-	end
-end
-
-dropdown.MouseButton1Click:Connect(function()
-	teamDropdownOpen = not teamDropdownOpen
-	for _, obj in ipairs(menu:GetChildren()) do
-		if obj.Name == "TeamOption" then obj:Destroy() end
-	end
-
-	if not teamDropdownOpen then return end
-
-	local y = 355
-	for _, team in ipairs(Teams:GetTeams()) do
-		local btn = Instance.new("TextButton", menu)
-		btn.Name = "TeamOption"
-		btn.Position = UDim2.new(0, 10, 0, y)
-		btn.Size = UDim2.new(0, 200, 0, 20)
-		btn.Text = (ignoredTeams[team.Name] and "[✔] " or "[  ] ") .. team.Name
-		btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-		btn.TextColor3 = Color3.new(1, 1, 1)
-		btn.MouseButton1Click:Connect(function()
-			toggleTeamIgnore(team.Name)
-			btn.Text = (ignoredTeams[team.Name] and "[✔] " or "[  ] ") .. team.Name
-		end)
-		y += 25
+		Lighting.Brightness = 1
+		Lighting.ClockTime = 14
+		Lighting.FogEnd = 1000
 	end
 end)
 
--- Runtime logic
+ownTeamCheckbox.MouseButton1Click:Connect(function()
+	ignoreOwnTeam = not ignoreOwnTeam
+	ownTeamCheckbox.BackgroundColor3 = ignoreOwnTeam and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+end)
+
+-- Head Mod / Highlight
 local function applyHeadMod(player)
-	if player == LocalPlayer or ignoredTeams[player.Team and player.Team.Name or ""] then return end
+	if player == LocalPlayer then return end
+	if ignoredTeams[player.Team and player.Team.Name or ""] then return end
+	if ignoreOwnTeam and player.Team == LocalPlayer.Team then return end
+
 	local char = player.Character
-	local head = char and char:FindFirstChild("Head")
-	if head then
-		local humanoid = char:FindFirstChildOfClass("Humanoid")
-		local baseSize = humanoid and (humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6)
+	if not char then return end
+	local head = char:FindFirstChild("Head")
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if head and humanoid then
+		local baseSize = humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
 		head.Size = baseSize * getHeadSize()
 		head.Transparency = getTransparency()
 		head.CanCollide = false
@@ -272,14 +270,17 @@ local function applyHighlight(player)
 	if player == LocalPlayer then return end
 	local char = player.Character
 	if not char then return end
-	local hl = char:FindFirstChild("ClientESP") or Instance.new("Highlight")
-	hl.Name = "ClientESP"
-	hl.Adornee = char
-	hl.FillTransparency = 1
-	hl.OutlineTransparency = 0
+	local hl = char:FindFirstChild("ClientESP")
+	if not hl then
+		hl = Instance.new("Highlight")
+		hl.Name = "ClientESP"
+		hl.Adornee = char
+		hl.FillTransparency = 1
+		hl.OutlineTransparency = 0
+		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		hl.Parent = char
+	end
 	hl.OutlineColor = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
-	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	hl.Parent = char
 end
 
 local function hookPlayer(player)
@@ -292,24 +293,16 @@ local function hookPlayer(player)
 	end)
 end
 
-for _, p in ipairs(Players:GetPlayers()) do
+for _, p in pairs(Players:GetPlayers()) do
 	if p ~= LocalPlayer then hookPlayer(p) end
 end
-Players.PlayerAdded:Connect(function(p)
-	if p ~= LocalPlayer then hookPlayer(p) end
-end)
+Players.PlayerAdded:Connect(hookPlayer)
 
 RunService.Heartbeat:Connect(function()
-	for _, p in ipairs(Players:GetPlayers()) do
+	for _, p in pairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
 			if headModEnabled then pcall(function() applyHeadMod(p) end) end
 			if highlightEnabled then pcall(function() applyHighlight(p) end) end
 		end
-	end
-
-	if fullBrightEnabled then
-		Lighting.Ambient = Color3.new(1, 1, 1)
-		Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
-		Lighting.Brightness = 4
 	end
 end)
