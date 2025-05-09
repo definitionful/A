@@ -27,7 +27,6 @@ end
 
 local defaultHeadSize = getDefaultHeadSize()
 local headModEnabled = false
-local highlightEnabled = false
 
 -- GUI
 local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
@@ -150,16 +149,34 @@ createCheckbox(10, function()
 	return headModEnabled
 end)
 
-createLabel("Highlight:", 40)
-createCheckbox(40, function()
-	highlightEnabled = not highlightEnabled
-	return highlightEnabled
-end)
-
-createLabel("Full Bright:", 70)
-createCheckbox(70, function()
+local fbCheck = createCheckbox(10, function()
 	fullBrightEnabled = not fullBrightEnabled
 	return fullBrightEnabled
+end)
+fbCheck.Position = UDim2.new(0, 150, 0, 10)
+
+createLabel("ESP:", 40)
+createCheckbox(40, function()
+	espEnabled = not espEnabled
+	if not espEnabled then
+		for _, child in ipairs(espFolder:GetChildren()) do child:Destroy() end
+	end
+	return espEnabled
+end)
+
+createLabel("Chams:", 70)
+createCheckbox(70, function()
+	chamsEnabled = not chamsEnabled
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character then
+			for _, part in ipairs(player.Character:GetDescendants()) do
+				if part:IsA("BoxHandleAdornment") and part.Name == "ChamBox" then
+					part:Destroy()
+				end
+			end
+		end
+	end
+	return chamsEnabled
 end)
 
 createLabel("Head Size:", 100)
@@ -206,7 +223,6 @@ resetButton.BackgroundColor3 = Color3.fromRGB(100, 30, 30)
 resetButton.TextColor3 = Color3.new(1, 1, 1)
 resetButton.MouseButton1Click:Connect(function()
 	headModEnabled = false
-	highlightEnabled = false
 	fullBrightEnabled = false
 	ignoredTeams = {}
 end)
@@ -268,42 +284,95 @@ local function applyHeadMod(player)
 	end
 end
 
-local function applyHighlight(player)
+-- New toggles
+local espEnabled = false
+local chamsEnabled = false
+
+-- ESP folder for GUI labels
+local espFolder = Instance.new("Folder", gui)
+espFolder.Name = "ClientESP_Labels"
+
+-- ESP Creation
+local function createESP(player)
 	if player == LocalPlayer then return end
-	local char = player.Character
-	if not char then return end
-	local hl = char:FindFirstChild("ClientESP") or Instance.new("Highlight")
-	hl.Name = "ClientESP"
-	hl.Adornee = char
-	hl.FillTransparency = 1
-	hl.OutlineTransparency = 0
-	hl.OutlineColor = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
-	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	hl.Parent = char
-end
+	local function createLabel()
+		if not player.Character or not player.Character:FindFirstChild("Head") then return end
 
-local function hookPlayer(player)
+		local billboard = Instance.new("BillboardGui")
+		billboard.Name = "ESPLabel"
+		billboard.Adornee = player.Character.Head
+		billboard.AlwaysOnTop = true
+		billboard.Size = UDim2.new(0, 100, 0, 40)
+		billboard.StudsOffset = Vector3.new(0, 2, 0)
+		billboard.Parent = espFolder
+
+		local label = Instance.new("TextLabel", billboard)
+		label.Size = UDim2.new(1, 0, 1, 0)
+		label.BackgroundTransparency = 1
+		label.TextColor3 = Color3.new(1, 1, 1)
+		label.TextStrokeTransparency = 0.5
+		label.TextScaled = true
+		label.Text = player.Name
+
+		RunService.Heartbeat:Connect(function()
+			if not billboard.Parent or not player.Character or not player.Character:FindFirstChild("Humanoid") then return end
+			local hp = math.floor(player.Character.Humanoid.Health)
+			local max = math.floor(player.Character.Humanoid.MaxHealth)
+			label.Text = string.format("%s [%d/%d]", player.Name, hp, max)
+		end)
+	end
+
 	player.CharacterAdded:Connect(function()
+		if espEnabled then
+			task.wait(1)
+			createLabel()
+		end
+	end)
+
+	if player.Character and espEnabled then
+		createLabel()
+	end
+end
+
+-- Chams Application
+local function applyChams(player)
+	if player == LocalPlayer or not player.Character then return end
+	for _, part in ipairs(player.Character:GetChildren()) do
+		if part:IsA("BasePart") and not part:FindFirstChild("ChamBox") then
+			local box = Instance.new("BoxHandleAdornment")
+			box.Name = "ChamBox"
+			box.Size = part.Size
+			box.Adornee = part
+			box.AlwaysOnTop = true
+			box.ZIndex = 0
+			box.Transparency = getTransparency()
+			box.AlwaysOnTop = true
+			box.Color3 = player.Team and player.Team.TeamColor.Color or Color3.new(0, 1, 0)
+			box.Parent = part
+		end
+	end
+end
+-- Track all players
+local function hookPlayer(p)
+	if p == LocalPlayer then return end
+	p.CharacterAdded:Connect(function()
 		task.wait(1)
-		if highlightEnabled then applyHighlight(player) end
+		if espEnabled then createESP(p) end
+		if chamsEnabled then applyChams(p) end
 	end)
-	player:GetPropertyChangedSignal("Team"):Connect(function()
-		if highlightEnabled then applyHighlight(player) end
+	p:GetPropertyChangedSignal("Team"):Connect(function()
 	end)
 end
 
-for _, p in ipairs(Players:GetPlayers()) do
-	if p ~= LocalPlayer then hookPlayer(p) end
-end
-Players.PlayerAdded:Connect(function(p)
-	if p ~= LocalPlayer then hookPlayer(p) end
-end)
+for _, p in ipairs(Players:GetPlayers()) do hookPlayer(p) end
+Players.PlayerAdded:Connect(hookPlayer)
 
+-- Update loop
 RunService.Heartbeat:Connect(function()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
 			if headModEnabled then pcall(function() applyHeadMod(p) end) end
-			if highlightEnabled then pcall(function() applyHighlight(p) end) end
+			if chamsEnabled then pcall(function() applyChams(p) end) end
 		end
 	end
 
