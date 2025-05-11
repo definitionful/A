@@ -28,14 +28,13 @@ end
 local defaultHeadSize = getDefaultHeadSize()
 local headModEnabled = false
 local highlightEnabled = false
-local lastRefreshTimes = {}
-local deadPlayers = {}
 
 -- GUI
 local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 gui.Name = "ClientESP_UI"
 gui.ResetOnSpawn = false
 
+-- Open Button
 local openButton = Instance.new("TextButton", gui)
 openButton.Size = UDim2.new(0, 100, 0, 40)
 openButton.Position = UDim2.new(0, 10, 0, 10)
@@ -45,6 +44,7 @@ openButton.TextColor3 = Color3.new(1, 1, 1)
 openButton.Active = true
 openButton.Draggable = true
 
+-- Main Menu
 local menu = Instance.new("Frame", gui)
 menu.Size = UDim2.new(0, 250, 0, 350)
 menu.Position = UDim2.new(0, 10, 0, 60)
@@ -53,6 +53,7 @@ menu.Visible = false
 menu.Active = true
 menu.Draggable = true
 
+-- Keep GUI on screen
 RunService.RenderStepped:Connect(function()
 	for _, frame in ipairs({menu, openButton}) do
 		if frame.Visible then
@@ -64,6 +65,7 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
+-- Toggle Menu Keybind
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed and input.KeyCode == keybind then
 		menu.Visible = not menu.Visible
@@ -74,6 +76,7 @@ openButton.MouseButton1Click:Connect(function()
 	menu.Visible = not menu.Visible
 end)
 
+-- GUI Utility Functions (Label, Checkbox, Slider)
 local function createLabel(text, y)
 	local lbl = Instance.new("TextLabel", menu)
 	lbl.Position = UDim2.new(0, 10, 0, y)
@@ -160,7 +163,7 @@ createCheckbox(70, function()
 end)
 
 createLabel("Head Size:", 100)
-local getHeadSize = createSlider(120, 1, 100, defaultHeadSize.X)
+local getHeadSize = createSlider(120, 1, 100, defaultHeadSize.X) -- Changed to 100 max
 
 createLabel("Transparency:", 150)
 local getTransparency = createSlider(170, 0, 1, 0)
@@ -194,7 +197,7 @@ keyBox.Focused:Connect(function()
 	end)
 end)
 
--- Reset
+-- Reset Button
 local resetButton = Instance.new("TextButton", menu)
 resetButton.Position = UDim2.new(0, 10, 0, 265)
 resetButton.Size = UDim2.new(0, 200, 0, 30)
@@ -208,7 +211,7 @@ resetButton.MouseButton1Click:Connect(function()
 	ignoredTeams = {}
 end)
 
--- Dropdown for ignoring teams
+-- Team Ignore Dropdown
 createLabel("Ignore Team (Head):", 305)
 local dropdown = Instance.new("TextButton", menu)
 dropdown.Size = UDim2.new(0, 200, 0, 25)
@@ -217,24 +220,21 @@ dropdown.Text = "Select team to ignore..."
 dropdown.TextColor3 = Color3.new(1, 1, 1)
 dropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 
+local function applyAllHeadMods()
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then
+			pcall(function() applyHeadMod(p) end)
+		end
+	end
+end
+
 local function toggleTeamIgnore(teamName)
 	if ignoredTeams[teamName] then
 		ignoredTeams[teamName] = nil
 	else
 		ignoredTeams[teamName] = true
 	end
-
-	-- Apply instantly to alive members
-	for _, player in ipairs(Players:GetPlayers()) do
-		if player.Team and player.Team.Name == teamName then
-			local char = player.Character
-			local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-			if humanoid and humanoid.Health > 0 then
-				if headModEnabled then applyHeadMod(player) end
-				if highlightEnabled then applyHighlight(player) end
-			end
-		end
-	end
+	applyAllHeadMods() -- update head mods immediately
 end
 
 dropdown.MouseButton1Click:Connect(function()
@@ -262,13 +262,14 @@ dropdown.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Logic
+-- Apply Head Mod (only alive players, skip ignored teams)
 function applyHeadMod(player)
 	if player == LocalPlayer or ignoredTeams[player.Team and player.Team.Name or ""] then return end
 	local char = player.Character
-	local head = char and char:FindFirstChild("Head")
 	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-	if head and humanoid then
+	if not humanoid or humanoid.Health <= 0 then return end
+	local head = char:FindFirstChild("Head")
+	if head then
 		local baseSize = humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
 		head.Size = baseSize * getHeadSize()
 		head.Transparency = getTransparency()
@@ -277,14 +278,13 @@ function applyHeadMod(player)
 	end
 end
 
-local function applyHighlight(player)
+-- Apply Highlight (only to alive players)
+function applyHighlight(player)
 	if player == LocalPlayer then return end
 	local char = player.Character
 	if not char then return end
-
 	local humanoid = char:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then return end -- ❗ Only alive players
-
+	if not humanoid or humanoid.Health <= 0 then return end
 	local hl = char:FindFirstChild("ClientESP") or Instance.new("Highlight")
 	hl.Name = "ClientESP"
 	hl.Adornee = char
@@ -295,10 +295,10 @@ local function applyHighlight(player)
 	hl.Parent = char
 end
 
-local function hookPlayer(player)
+-- Hook players
+function hookPlayer(player)
 	player.CharacterAdded:Connect(function()
 		task.wait(1)
-		deadPlayers[player] = nil
 		if highlightEnabled then applyHighlight(player) end
 	end)
 	player:GetPropertyChangedSignal("Team"):Connect(function()
@@ -313,34 +313,20 @@ Players.PlayerAdded:Connect(function(p)
 	if p ~= LocalPlayer then hookPlayer(p) end
 end)
 
+-- Runtime Loop (1s refresh)
 task.spawn(function()
 	while true do
 		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= LocalPlayer and not ignoredTeams[p.Team and p.Team.Name or ""] then
-				local char = p.Character
-				local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-				if humanoid and humanoid.Health > 0 then
-					deadPlayers[p] = nil
-					if headModEnabled then pcall(function() applyHeadMod(p) end) end
-					if highlightEnabled then pcall(function() applyHighlight(p) end) end
-				elseif not deadPlayers[p] then
-					local head = char and char:FindFirstChild("Head")
-					if head and humanoid then
-						local baseSize = humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
-						head.Size = baseSize
-						head.Transparency = 0
-					end
-					deadPlayers[p] = true
-				end
+			if p ~= LocalPlayer then
+				if headModEnabled then pcall(function() applyHeadMod(p) end) end
+				if highlightEnabled then pcall(function() applyHighlight(p) end) end
 			end
 		end
-
 		if fullBrightEnabled then
 			Lighting.Ambient = Color3.new(1, 1, 1)
 			Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
 			Lighting.Brightness = 4
 		end
-
-		task.wait(1)
+		task.wait(1) -- Changed from 5 to 1 second
 	end
 end)
