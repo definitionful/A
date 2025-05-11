@@ -160,7 +160,7 @@ createCheckbox(70, function()
 end)
 
 createLabel("Head Size:", 100)
-local getHeadSize = createSlider(120, 1, 30, defaultHeadSize.X)
+local getHeadSize = createSlider(120, 1, 100, defaultHeadSize.X)
 
 createLabel("Transparency:", 150)
 local getTransparency = createSlider(170, 0, 1, 0)
@@ -337,6 +337,6 @@ task.spawn(function()
 			Lighting.Brightness = 4
 		end
 
-		task.wait(5)
+		task.wait(1)
 	end
 end)
