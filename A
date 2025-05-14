@@ -1,3 +1,4 @@
+-- [START OF FULL SCRIPT]
 -- Services
 local Players = game:GetService("Players")
 local Teams = game:GetService("Teams")
@@ -34,6 +35,7 @@ local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 gui.Name = "ClientESP_UI"
 gui.ResetOnSpawn = false
 
+-- Open Button
 local openButton = Instance.new("TextButton", gui)
 openButton.Size = UDim2.new(0, 100, 0, 40)
 openButton.Position = UDim2.new(0, 10, 0, 10)
@@ -43,14 +45,16 @@ openButton.TextColor3 = Color3.new(1, 1, 1)
 openButton.Active = true
 openButton.Draggable = true
 
+-- Main Menu
 local menu = Instance.new("Frame", gui)
-menu.Size = UDim2.new(0, 250, 0, 250)
+menu.Size = UDim2.new(0, 250, 0, 350)
 menu.Position = UDim2.new(0, 10, 0, 60)
 menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 menu.Visible = false
 menu.Active = true
 menu.Draggable = true
 
+-- Keep GUI on screen
 RunService.RenderStepped:Connect(function()
 	for _, frame in ipairs({menu, openButton}) do
 		if frame.Visible then
@@ -62,25 +66,17 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
+-- Menu toggle via keybind
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if not gameProcessed then
-		if input.KeyCode == menuKeybind then
-			menu.Visible = not menu.Visible
-		elseif input.KeyCode == headModKeybind then
-			headModEnabled = not headModEnabled
-			for _, p in ipairs(Players:GetPlayers()) do
-				if p ~= LocalPlayer then
-					applyHeadMod(p)
-				end
-			end
-		end
+	if not gameProcessed and input.KeyCode == menuKeybind then
+		menu.Visible = not menu.Visible
 	end
 end)
-
 openButton.MouseButton1Click:Connect(function()
 	menu.Visible = not menu.Visible
 end)
 
+-- GUI Utility
 local function createLabel(text, y)
 	local lbl = Instance.new("TextLabel", menu)
 	lbl.Position = UDim2.new(0, 10, 0, y)
@@ -90,6 +86,20 @@ local function createLabel(text, y)
 	lbl.Text = text
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	return lbl
+end
+
+local function createCheckbox(y, getToggle)
+	local box = Instance.new("TextButton", menu)
+	box.Size = UDim2.new(0, 20, 0, 20)
+	box.Position = UDim2.new(0, 90, 0, y)
+	box.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	box.BorderColor3 = Color3.new(0, 0, 0)
+	box.Text = ""
+	box.MouseButton1Click:Connect(function()
+		local enabled = getToggle()
+		box.BackgroundColor3 = enabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+	end)
+	return box
 end
 
 local function createSlider(y, min, max, default)
@@ -133,13 +143,79 @@ local function createSlider(y, min, max, default)
 	return function() return value end
 end
 
-createLabel("Head Size:", 10)
-local getHeadSize = createSlider(30, 1, 100, defaultHeadSize.X)
+-- Controls
+createLabel("Head Mod:", 10)
+createCheckbox(10, function()
+	headModEnabled = not headModEnabled
+	return headModEnabled
+end)
 
-createLabel("Team Ignore:", 60)
+createLabel("Head Size:", 40)
+getHeadSize = createSlider(60, 1, 100, defaultHeadSize.X)
+
+-- Head mod keybind setup
+createLabel("HeadMod Keybind:", 90)
+local headKeyLabel = Instance.new("TextLabel", menu)
+headKeyLabel.Position = UDim2.new(0, 120, 0, 90)
+headKeyLabel.Size = UDim2.new(0, 100, 0, 20)
+headKeyLabel.Text = headModKeybind.Name
+headKeyLabel.BackgroundTransparency = 1
+headKeyLabel.TextColor3 = Color3.new(1, 1, 1)
+
+local headKeyBox = Instance.new("TextBox", menu)
+headKeyBox.Position = UDim2.new(0, 10, 0, 115)
+headKeyBox.Size = UDim2.new(0, 200, 0, 25)
+headKeyBox.PlaceholderText = "Press a key..."
+headKeyBox.ClearTextOnFocus = false
+headKeyBox.TextColor3 = Color3.new(1, 1, 1)
+headKeyBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+
+headKeyBox.Focused:Connect(function()
+	local conn
+	conn = UserInputService.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			headModKeybind = input.KeyCode
+			headKeyLabel.Text = headModKeybind.Name
+			headKeyBox:ReleaseFocus()
+			conn:Disconnect()
+		end
+	end)
+end)
+
+-- Menu keybind setup
+createLabel("Menu Keybind:", 150)
+local menuKeyLabel = Instance.new("TextLabel", menu)
+menuKeyLabel.Position = UDim2.new(0, 120, 0, 150)
+menuKeyLabel.Size = UDim2.new(0, 100, 0, 20)
+menuKeyLabel.Text = menuKeybind.Name
+menuKeyLabel.BackgroundTransparency = 1
+menuKeyLabel.TextColor3 = Color3.new(1, 1, 1)
+
+local menuKeyBox = Instance.new("TextBox", menu)
+menuKeyBox.Position = UDim2.new(0, 10, 0, 175)
+menuKeyBox.Size = UDim2.new(0, 200, 0, 25)
+menuKeyBox.PlaceholderText = "Press a key..."
+menuKeyBox.ClearTextOnFocus = false
+menuKeyBox.TextColor3 = Color3.new(1, 1, 1)
+menuKeyBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+
+menuKeyBox.Focused:Connect(function()
+	local conn
+	conn = UserInputService.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			menuKeybind = input.KeyCode
+			menuKeyLabel.Text = menuKeybind.Name
+			menuKeyBox:ReleaseFocus()
+			conn:Disconnect()
+		end
+	end)
+end)
+
+-- Dropdown for ignoring teams
+createLabel("Ignore Team (Head):", 215)
 local dropdown = Instance.new("TextButton", menu)
 dropdown.Size = UDim2.new(0, 200, 0, 25)
-dropdown.Position = UDim2.new(0, 10, 0, 80)
+dropdown.Position = UDim2.new(0, 10, 0, 235)
 dropdown.Text = "Select team to ignore..."
 dropdown.TextColor3 = Color3.new(1, 1, 1)
 dropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -150,11 +226,6 @@ local function toggleTeamIgnore(teamName)
 	else
 		ignoredTeams[teamName] = true
 	end
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p ~= LocalPlayer then
-			applyHeadMod(p)
-		end
-	end
 end
 
 dropdown.MouseButton1Click:Connect(function()
@@ -162,8 +233,10 @@ dropdown.MouseButton1Click:Connect(function()
 	for _, obj in ipairs(menu:GetChildren()) do
 		if obj.Name == "TeamOption" then obj:Destroy() end
 	end
+
 	if not teamDropdownOpen then return end
-	local y = 110
+
+	local y = 265
 	for _, team in ipairs(Teams:GetTeams()) do
 		local btn = Instance.new("TextButton", menu)
 		btn.Name = "TeamOption"
@@ -180,35 +253,46 @@ dropdown.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Head Mod Logic
-function applyHeadMod(player)
-	if not player.Character or not player.Character:FindFirstChild("Humanoid") then return end
-	local isAlive = player.Character:FindFirstChild("Humanoid").Health > 0
-	if ignoredTeams[player.Team and player.Team.Name or ""] or not isAlive then
-		local head = player.Character:FindFirstChild("Head")
-		if head then
-			head.Size = getDefaultHeadSize()
-		end
-		return
+-- Toggle head mod by keybind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if not gameProcessed and input.KeyCode == headModKeybind then
+		headModEnabled = not headModEnabled
 	end
-	local head = player.Character:FindFirstChild("Head")
-	if head then
-		local rig = player.Character:FindFirstChildOfClass("Humanoid").RigType
-		local baseSize = rig == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
-		head.Size = baseSize * getHeadSize()
-		head.CanCollide = false
-		head.Massless = true
+end)
+
+-- Apply Head Mod instantly
+local function applyHeadMod(player)
+	if player == LocalPlayer then return end
+	local teamName = player.Team and player.Team.Name or ""
+	local ignore = ignoredTeams[teamName]
+	local char = player.Character
+	if not char or not char:FindFirstChild("Head") or not char:FindFirstChildOfClass("Humanoid") then return end
+
+	local isAlive = char:FindFirstChildOfClass("Humanoid").Health > 0
+	local rig = char:FindFirstChildOfClass("Humanoid").RigType
+	local baseSize = rig == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
+
+	if headModEnabled and isAlive and not ignore then
+		char.Head.Size = baseSize * getHeadSize()
+		char.Head.CanCollide = false
+		char.Head.Massless = true
+	else
+		char.Head.Size = baseSize
 	end
 end
 
--- Player Hook
+-- Player hook
+local function onCharacterAdded(char)
+	task.wait(0.5)
+	applyHeadMod(Players:GetPlayerFromCharacter(char))
+end
+
 local function hookPlayer(player)
-	player.CharacterAdded:Connect(function()
-		task.wait(0.5)
-		if headModEnabled then applyHeadMod(player) end
+	player.CharacterAdded:Connect(function(char)
+		onCharacterAdded(char)
 	end)
 	player:GetPropertyChangedSignal("Team"):Connect(function()
-		if headModEnabled then applyHeadMod(player) end
+		applyHeadMod(player)
 	end)
 end
 
@@ -219,14 +303,12 @@ Players.PlayerAdded:Connect(function(p)
 	if p ~= LocalPlayer then hookPlayer(p) end
 end)
 
--- Refresh logic
-while true do
-	task.wait(1)
-	if headModEnabled then
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= LocalPlayer then
-				applyHeadMod(p)
-			end
+-- Refresh loop
+RunService.Heartbeat:Connect(function()
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then
+			pcall(function() applyHeadMod(p) end)
 		end
 	end
-end
+end)
+-- [END OF FULL SCRIPT]
