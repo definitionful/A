@@ -1,29 +1,36 @@
 -- Services
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
-local RunService = game:GetService("RunService")
 local Teams = game:GetService("Teams")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 
 -- Settings
-local DEFAULT_MENU_KEY = Enum.KeyCode.LeftAlt
-local DEFAULT_HEADMOD_KEY = Enum.KeyCode.H
 local DEFAULT_HEAD_SIZE_R15 = Vector3.new(1.198, 1.202, 1.198)
 local DEFAULT_HEAD_SIZE_R6 = Vector3.new(2, 1, 1)
+local DEFAULT_KEY = Enum.KeyCode.LeftAlt
+local HEAD_MOD_DEFAULT_KEY = Enum.KeyCode.H
+local headModKey = HEAD_MOD_DEFAULT_KEY
+local ignoredTeams = {}
+local fullBrightEnabled = false
+local teamDropdownOpen = false
 
-local menuKeybind = DEFAULT_MENU_KEY
-local headModKeybind = DEFAULT_HEADMOD_KEY
+-- Variables
+local function getDefaultHeadSize()
+	local char = LocalPlayer.Character
+	if char and char:FindFirstChild("Humanoid") then
+		return char.Humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
+	end
+	return DEFAULT_HEAD_SIZE_R15
+end
 
--- State
+local defaultHeadSize = getDefaultHeadSize()
 local headModEnabled = false
 local highlightEnabled = false
-local fullbrightEnabled = false
-local teamDropdownOpen = false
-local ignoredTeams = {}
 
--- GUI setup
+-- GUI
 local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 gui.Name = "ClientESP_UI"
 gui.ResetOnSpawn = false
@@ -40,14 +47,41 @@ openButton.Draggable = true
 
 -- Main Menu
 local menu = Instance.new("Frame", gui)
-menu.Size = UDim2.new(0, 250, 0, 400)
+menu.Size = UDim2.new(0, 250, 0, 350)
 menu.Position = UDim2.new(0, 10, 0, 60)
 menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 menu.Visible = false
 menu.Active = true
 menu.Draggable = true
 
--- GUI Utility
+-- Keep GUI on screen
+RunService.RenderStepped:Connect(function()
+	for _, frame in ipairs({menu, openButton}) do
+		if frame.Visible then
+			local pos = frame.AbsolutePosition
+			local size = frame.AbsoluteSize
+			local guiSize = gui.AbsoluteSize
+			frame.Position = UDim2.new(0, math.clamp(pos.X, 0, guiSize.X - size.X), 0, math.clamp(pos.Y, 0, guiSize.Y - size.Y))
+		end
+	end
+end)
+
+-- Toggle Menu Keybind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if not gameProcessed then
+	if input.KeyCode == keybind then
+		menu.Visible = not menu.Visible
+	elseif input.KeyCode == headModKey then
+		headModEnabled = not headModEnabled
+		applyAllHeadMods()
+	end
+end
+
+openButton.MouseButton1Click:Connect(function()
+	menu.Visible = not menu.Visible
+end)
+
+-- GUI Utility Functions (Label, Checkbox, Slider)
 local function createLabel(text, y)
 	local lbl = Instance.new("TextLabel", menu)
 	lbl.Position = UDim2.new(0, 10, 0, y)
@@ -59,22 +93,18 @@ local function createLabel(text, y)
 	return lbl
 end
 
-local function createCheckbox(y, initialState, onToggle)
+local function createCheckbox(y, onToggle)
 	local box = Instance.new("TextButton", menu)
 	box.Size = UDim2.new(0, 20, 0, 20)
 	box.Position = UDim2.new(0, 90, 0, y)
-	box.BackgroundColor3 = initialState and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+	box.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 	box.BorderColor3 = Color3.new(0, 0, 0)
 	box.Text = ""
 	box.MouseButton1Click:Connect(function()
-		initialState = not initialState
-		box.BackgroundColor3 = initialState and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
-		onToggle(initialState)
+		local enabled = onToggle()
+		box.BackgroundColor3 = enabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
 	end)
-	return box, function(state)
-		initialState = state
-		box.BackgroundColor3 = state and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
-	end
+	return box
 end
 
 local function createSlider(y, min, max, default)
@@ -118,237 +148,76 @@ local function createSlider(y, min, max, default)
 	return function() return value end
 end
 
--- Menu Toggle
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if not gameProcessed then
-		if input.KeyCode == menuKeybind then
-			menu.Visible = not menu.Visible
-		elseif input.KeyCode == headModKeybind then
-			headModEnabled = not headModEnabled
-			if setHeadCheckbox then setHeadCheckbox(headModEnabled) end
-		end
-	end
-end)
-
-openButton.MouseButton1Click:Connect(function()
-	menu.Visible = not menu.Visible
-end)
-
--- Labels & Toggles
+-- Controls
 createLabel("Head Mod:", 10)
-local _, setHeadCheckbox = createCheckbox(10, headModEnabled, function(state) headModEnabled = state end)
+createCheckbox(10, function()
+	headModEnabled = not headModEnabled
+	return headModEnabled
+end)
 
 createLabel("Highlight:", 40)
-createCheckbox(40, highlightEnabled, function(state) highlightEnabled = state end)
+createCheckbox(40, function()
+	highlightEnabled = not highlightEnabled
+	return highlightEnabled
+end)
 
 createLabel("Full Bright:", 70)
-createCheckbox(70, fullbrightEnabled, function(state) fullbrightEnabled = state end)
+createCheckbox(70, function()
+	fullBrightEnabled = not fullBrightEnabled
+	return fullBrightEnabled
+end)
 
 createLabel("Head Size:", 100)
-local getHeadSize = createSlider(120, 1, 100, 1)
+local getHeadSize = createSlider(120, 1, 100, defaultHeadSize.X) -- Changed to 100 max
 
 createLabel("Transparency:", 150)
 local getTransparency = createSlider(170, 0, 1, 0)
 
--- Keybind Labels
-createLabel("Toggle Menu Keybind:", 200)
-local menuKeyLabel = Instance.new("TextLabel", menu)
-menuKeyLabel.Position = UDim2.new(0, 120, 0, 200)
-menuKeyLabel.Size = UDim2.new(0, 100, 0, 20)
-menuKeyLabel.Text = menuKeybind.Name
-menuKeyLabel.BackgroundTransparency = 1
-menuKeyLabel.TextColor3 = Color3.new(1, 1, 1)
+-- Keybind Setup
+createLabel("Toggle Keybind:", 200)
+createLabel("HeadMod Keybind:", 295)
+local headModKeyLabel = Instance.new("TextLabel", menu)
+headModKeyLabel.Position = UDim2.new(0, 120, 0, 295)
+headModKeyLabel.Size = UDim2.new(0, 100, 0, 20)
+headModKeyLabel.Text = headModKey.Name
+headModKeyLabel.BackgroundTransparency = 1
+headModKeyLabel.TextColor3 = Color3.new(1, 1, 1)
 
-local menuKeyBox = Instance.new("TextBox", menu)
-menuKeyBox.Position = UDim2.new(0, 10, 0, 230)
-menuKeyBox.Size = UDim2.new(0, 200, 0, 25)
-menuKeyBox.PlaceholderText = "Set menu key..."
-menuKeyBox.ClearTextOnFocus = false
-menuKeyBox.TextColor3 = Color3.new(1, 1, 1)
-menuKeyBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+local headModKeyBox = Instance.new("TextBox", menu)
+headModKeyBox.Position = UDim2.new(0, 10, 0, 320)
+headModKeyBox.Size = UDim2.new(0, 200, 0, 25)
+headModKeyBox.PlaceholderText = "Press key for HeadMod..."
+headModKeyBox.ClearTextOnFocus = false
+headModKeyBox.TextColor3 = Color3.new(1, 1, 1)
+headModKeyBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 
-menuKeyBox.Focused:Connect(function()
+headModKeyBox.Focused:Connect(function()
 	local conn
 	conn = UserInputService.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.Keyboard then
-			menuKeybind = input.KeyCode
-			menuKeyLabel.Text = input.KeyCode.Name
-			menuKeyBox:ReleaseFocus()
+			headModKey = input.KeyCode
+			headModKeyLabel.Text = headModKey.Name
+			headModKeyBox:ReleaseFocus()
 			conn:Disconnect()
 		end
 	end)
 end)
 
-createLabel("Head Mod Keybind:", 265)
-local headKeyLabel = Instance.new("TextLabel", menu)
-headKeyLabel.Position = UDim2.new(0, 120, 0, 265)
-headKeyLabel.Size = UDim2.new(0, 100, 0, 20)
-headKeyLabel.Text = headModKeybind.Name
-headKeyLabel.BackgroundTransparency = 1
-headKeyLabel.TextColor3 = Color3.new(1, 1, 1)
-
-local headKeyBox = Instance.new("TextBox", menu)
-headKeyBox.Position = UDim2.new(0, 10, 0, 295)
-headKeyBox.Size = UDim2.new(0, 200, 0, 25)
-headKeyBox.PlaceholderText = "Set head mod key..."
-headKeyBox.ClearTextOnFocus = false
-headKeyBox.TextColor3 = Color3.new(1, 1, 1)
-headKeyBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-
-headKeyBox.Focused:Connect(function()
-	local conn
-	conn = UserInputService.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.Keyboard then
-			headModKeybind = input.KeyCode
-			headKeyLabel.Text = input.KeyCode.Name
-			headKeyBox:ReleaseFocus()
-			conn:Disconnect()
-		end
-	end)
+-- Reset Button
+local resetButton = Instance.new("TextButton", menu)
+resetButton.Position = UDim2.new(0, 10, 0, 265)
+resetButton.Size = UDim2.new(0, 200, 0, 30)
+resetButton.Text = "Reset to Default"
+resetButton.BackgroundColor3 = Color3.fromRGB(100, 30, 30)
+resetButton.TextColor3 = Color3.new(1, 1, 1)
+resetButton.MouseButton1Click:Connect(function()
+	headModEnabled = false
+	highlightEnabled = false
+	fullBrightEnabled = false
+	ignoredTeams = {}
 end)
 
--- Fullbright function
-local originalLighting = {
-    Ambient = Lighting.Ambient,
-    Brightness = Lighting.Brightness,
-    ClockTime = Lighting.ClockTime,
-    ColorShift_Bottom = Lighting.ColorShift_Bottom,
-    ColorShift_Top = Lighting.ColorShift_Top,
-    OutdoorAmbient = Lighting.OutdoorAmbient,
-}
-
-local function applyFullbright()
-    Lighting.Ambient = Color3.new(1, 1, 1)
-    Lighting.Brightness = 10
-    Lighting.ClockTime = 14
-    Lighting.ColorShift_Bottom = Color3.new(0, 0, 0)
-    Lighting.ColorShift_Top = Color3.new(0, 0, 0)
-    Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
-end
-
-local function revertFullbright()
-    for prop, val in pairs(originalLighting) do
-        Lighting[prop] = val
-    end
-end
-
--- Highlight logic
-local function createHighlightForCharacter(character)
-    if not character:FindFirstChild("Highlight") then
-        local highlight = Instance.new("Highlight")
-        highlight.Name = "Highlight"
-        highlight.FillTransparency = getTransparency()
-        highlight.OutlineTransparency = getTransparency()
-        highlight.Parent = character
-    end
-end
-
--- HeadMod logic
-local function updateHeadSize(character, size)
-    local head = character:FindFirstChild("Head")
-    if not head then return end
-
-    if character:FindFirstChildWhichIsA("Humanoid") then
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid.RigType == Enum.HumanoidRigType.R6 then
-            head.Size = Vector3.new(size * 2, size, size)
-        else
-            head.Size = Vector3.new(size * 1.2, size * 1.2, size * 1.2)
-        end
-        for _, mesh in pairs(head:GetChildren()) do
-            if mesh:IsA("SpecialMesh") then
-                mesh.Scale = head.Size
-            end
-        end
-    end
-end
-
--- Monitor Players
-local function onCharacterAdded(character, player)
-    local function safeUpdate()
-        if highlightEnabled and character:FindFirstChild("Humanoid") and character.Humanoid.Health > 0 then
-            createHighlightForCharacter(character)
-        end
-        if headModEnabled and character:FindFirstChild("Humanoid") and character.Humanoid.Health > 0 then
-            updateHeadSize(character, getHeadSize())
-        end
-    end
-
-    if ignoredTeams[player.Team] then return end
-
-    safeUpdate()
-
-    character:WaitForChild("Humanoid").Died:Connect(function()
-        local hl = character:FindFirstChild("Highlight")
-        if hl then hl:Destroy() end
-    end)
-end
-
-local function setupPlayer(player)
-    player.CharacterAdded:Connect(function(char)
-        onCharacterAdded(char, player)
-    end)
-    if player.Character then
-        onCharacterAdded(player.Character, player)
-    end
-end
-
-for _, player in ipairs(Players:GetPlayers()) do
-    if player ~= LocalPlayer then
-        setupPlayer(player)
-    end
-end
-
-Players.PlayerAdded:Connect(function(player)
-    if player ~= LocalPlayer then
-        setupPlayer(player)
-    end
-end)
-
--- Update loop
-RunService.RenderStepped:Connect(function()
-    -- Handle Fullbright
-    if fullbrightEnabled then
-        applyFullbright()
-    else
-        revertFullbright()
-    end
-
-    -- Update highlight & head size in real-time
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") then
-            local char = player.Character
-            local humanoid = char:FindFirstChild("Humanoid")
-            if humanoid and humanoid.Health > 0 and not ignoredTeams[player.Team] then
-                if highlightEnabled then
-                    createHighlightForCharacter(char)
-                    local hl = char:FindFirstChild("Highlight")
-                    if hl then
-                        hl.FillTransparency = getTransparency()
-                        hl.OutlineTransparency = getTransparency()
-                    end
-                else
-                    local hl = char:FindFirstChild("Highlight")
-                    if hl then hl:Destroy() end
-                end
-
-                if headModEnabled then
-                    updateHeadSize(char, getHeadSize())
-                end
-            else
-                local hl = char:FindFirstChild("Highlight")
-                if hl then hl:Destroy() end
-            end
-        end
-    end
-end)
-
--- Team ignoring setup (if you want to show a dropdown later)
-for _, team in ipairs(Teams:GetTeams()) do
-    ignoredTeams[team] = false
-end
-
--- Dropdown for ignoring teams (GUI)
+-- Team Ignore Dropdown
 createLabel("Ignore Team (Head):", 305)
 local dropdown = Instance.new("TextButton", menu)
 dropdown.Size = UDim2.new(0, 200, 0, 25)
@@ -357,12 +226,21 @@ dropdown.Text = "Select team to ignore..."
 dropdown.TextColor3 = Color3.new(1, 1, 1)
 dropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 
+local function applyAllHeadMods()
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then
+			pcall(function() applyHeadMod(p) end)
+		end
+	end
+end
+
 local function toggleTeamIgnore(teamName)
 	if ignoredTeams[teamName] then
 		ignoredTeams[teamName] = nil
 	else
 		ignoredTeams[teamName] = true
 	end
+	applyAllHeadMods() -- update head mods immediately
 end
 
 dropdown.MouseButton1Click:Connect(function()
@@ -390,20 +268,71 @@ dropdown.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Final setup to ensure checkbox reflects keybind toggle for HeadMod
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
+-- Apply Head Mod (only alive players, skip ignored teams)
+function applyHeadMod(player)
+	if player == LocalPlayer or ignoredTeams[player.Team and player.Team.Name or ""] then return end
+	local char = player.Character
+	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return end
+	local head = char:FindFirstChild("Head")
+	if head then
+		local baseSize = humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
+		head.Size = baseSize * getHeadSize()
+		head.Transparency = getTransparency()
+		head.CanCollide = false
+		head.Massless = true
+	end
+end
 
-	if input.KeyCode == keybind then
-		menu.Visible = not menu.Visible
-	elseif input.KeyCode == Enum.KeyCode.H then
-		headModEnabled = not headModEnabled
+-- Apply Highlight (only to alive players)
+function applyHighlight(player)
+	if player == LocalPlayer then return end
+	local char = player.Character
+	if not char then return end
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return end
+	local hl = char:FindFirstChild("ClientESP") or Instance.new("Highlight")
+	hl.Name = "ClientESP"
+	hl.Adornee = char
+	hl.FillTransparency = 1
+	hl.OutlineTransparency = 0
+	hl.OutlineColor = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
+	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	hl.Parent = char
+end
 
-		-- Update the visual state of the checkbox
-		for _, obj in pairs(menu:GetChildren()) do
-			if obj:IsA("TextButton") and obj.Position == UDim2.new(0, 90, 0, 10) then
-				obj.BackgroundColor3 = headModEnabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+-- Hook players
+function hookPlayer(player)
+	player.CharacterAdded:Connect(function()
+		task.wait(1)
+		if highlightEnabled then applyHighlight(player) end
+	end)
+	player:GetPropertyChangedSignal("Team"):Connect(function()
+		if highlightEnabled then applyHighlight(player) end
+	end)
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+	if p ~= LocalPlayer then hookPlayer(p) end
+end
+Players.PlayerAdded:Connect(function(p)
+	if p ~= LocalPlayer then hookPlayer(p) end
+end)
+
+-- Runtime Loop (1s refresh)
+task.spawn(function()
+	while true do
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer then
+				if headModEnabled then pcall(function() applyHeadMod(p) end) end
+				if highlightEnabled then pcall(function() applyHighlight(p) end) end
 			end
 		end
+		if fullBrightEnabled then
+			Lighting.Ambient = Color3.new(1, 1, 1)
+			Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+			Lighting.Brightness = 4
+		end
+		task.wait(1) -- Changed from 5 to 1 second
 	end
 end)
