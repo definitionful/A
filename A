@@ -12,6 +12,8 @@ local DEFAULT_HEAD_SIZE_R15 = Vector3.new(1.198, 1.202, 1.198)
 local DEFAULT_HEAD_SIZE_R6 = Vector3.new(2, 1, 1)
 local DEFAULT_KEY = Enum.KeyCode.LeftAlt
 local HEAD_MOD_DEFAULT_KEY = Enum.KeyCode.H
+
+local keybind = DEFAULT_KEY
 local headModKey = HEAD_MOD_DEFAULT_KEY
 local ignoredTeams = {}
 local fullBrightEnabled = false
@@ -47,7 +49,7 @@ openButton.Draggable = true
 
 -- Main Menu
 local menu = Instance.new("Frame", gui)
-menu.Size = UDim2.new(0, 250, 0, 350)
+menu.Size = UDim2.new(0, 250, 0, 450)
 menu.Position = UDim2.new(0, 10, 0, 60)
 menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 menu.Visible = false
@@ -66,22 +68,23 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
--- Toggle Menu Keybind
+-- Toggle Menu and HeadMod Keybinds
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed then
-	if input.KeyCode == keybind then
-		menu.Visible = not menu.Visible
-	elseif input.KeyCode == headModKey then
-		headModEnabled = not headModEnabled
-		applyAllHeadMods()
+		if input.KeyCode == keybind then
+			menu.Visible = not menu.Visible
+		elseif input.KeyCode == headModKey then
+			headModEnabled = not headModEnabled
+			applyAllHeadMods()
+		end
 	end
-end
+end)
 
 openButton.MouseButton1Click:Connect(function()
 	menu.Visible = not menu.Visible
 end)
 
--- GUI Utility Functions (Label, Checkbox, Slider)
+-- GUI Utility Functions
 local function createLabel(text, y)
 	local lbl = Instance.new("TextLabel", menu)
 	lbl.Position = UDim2.new(0, 10, 0, y)
@@ -152,6 +155,7 @@ end
 createLabel("Head Mod:", 10)
 createCheckbox(10, function()
 	headModEnabled = not headModEnabled
+	applyAllHeadMods()
 	return headModEnabled
 end)
 
@@ -168,13 +172,39 @@ createCheckbox(70, function()
 end)
 
 createLabel("Head Size:", 100)
-local getHeadSize = createSlider(120, 1, 100, defaultHeadSize.X) -- Changed to 100 max
+local getHeadSize = createSlider(120, 1, 100, defaultHeadSize.X)
 
 createLabel("Transparency:", 150)
 local getTransparency = createSlider(170, 0, 1, 0)
 
--- Keybind Setup
 createLabel("Toggle Keybind:", 200)
+local keyLabel = Instance.new("TextLabel", menu)
+keyLabel.Position = UDim2.new(0, 120, 0, 200)
+keyLabel.Size = UDim2.new(0, 100, 0, 20)
+keyLabel.Text = keybind.Name
+keyLabel.BackgroundTransparency = 1
+keyLabel.TextColor3 = Color3.new(1, 1, 1)
+
+local keyBox = Instance.new("TextBox", menu)
+keyBox.Position = UDim2.new(0, 10, 0, 230)
+keyBox.Size = UDim2.new(0, 200, 0, 25)
+keyBox.PlaceholderText = "Press any key..."
+keyBox.ClearTextOnFocus = false
+keyBox.TextColor3 = Color3.new(1, 1, 1)
+keyBox.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+
+keyBox.Focused:Connect(function()
+	local conn
+	conn = UserInputService.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			keybind = input.KeyCode
+			keyLabel.Text = keybind.Name
+			keyBox:ReleaseFocus()
+			conn:Disconnect()
+		end
+	end)
+end)
+
 createLabel("HeadMod Keybind:", 295)
 local headModKeyLabel = Instance.new("TextLabel", menu)
 headModKeyLabel.Position = UDim2.new(0, 120, 0, 295)
@@ -205,7 +235,7 @@ end)
 
 -- Reset Button
 local resetButton = Instance.new("TextButton", menu)
-resetButton.Position = UDim2.new(0, 10, 0, 265)
+resetButton.Position = UDim2.new(0, 10, 0, 355)
 resetButton.Size = UDim2.new(0, 200, 0, 30)
 resetButton.Text = "Reset to Default"
 resetButton.BackgroundColor3 = Color3.fromRGB(100, 30, 30)
@@ -218,10 +248,10 @@ resetButton.MouseButton1Click:Connect(function()
 end)
 
 -- Team Ignore Dropdown
-createLabel("Ignore Team (Head):", 305)
+createLabel("Ignore Team (Head):", 395)
 local dropdown = Instance.new("TextButton", menu)
 dropdown.Size = UDim2.new(0, 200, 0, 25)
-dropdown.Position = UDim2.new(0, 10, 0, 325)
+dropdown.Position = UDim2.new(0, 10, 0, 415)
 dropdown.Text = "Select team to ignore..."
 dropdown.TextColor3 = Color3.new(1, 1, 1)
 dropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
@@ -240,7 +270,7 @@ local function toggleTeamIgnore(teamName)
 	else
 		ignoredTeams[teamName] = true
 	end
-	applyAllHeadMods() -- update head mods immediately
+	applyAllHeadMods()
 end
 
 dropdown.MouseButton1Click:Connect(function()
@@ -251,7 +281,7 @@ dropdown.MouseButton1Click:Connect(function()
 
 	if not teamDropdownOpen then return end
 
-	local y = 355
+	local y = 445
 	for _, team in ipairs(Teams:GetTeams()) do
 		local btn = Instance.new("TextButton", menu)
 		btn.Name = "TeamOption"
@@ -268,7 +298,7 @@ dropdown.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Apply Head Mod (only alive players, skip ignored teams)
+-- Apply Head Mod
 function applyHeadMod(player)
 	if player == LocalPlayer or ignoredTeams[player.Team and player.Team.Name or ""] then return end
 	local char = player.Character
@@ -284,7 +314,7 @@ function applyHeadMod(player)
 	end
 end
 
--- Apply Highlight (only to alive players)
+-- Apply Highlight
 function applyHighlight(player)
 	if player == LocalPlayer then return end
 	local char = player.Character
@@ -319,7 +349,7 @@ Players.PlayerAdded:Connect(function(p)
 	if p ~= LocalPlayer then hookPlayer(p) end
 end)
 
--- Runtime Loop (1s refresh)
+-- Runtime Loop
 task.spawn(function()
 	while true do
 		for _, p in ipairs(Players:GetPlayers()) do
@@ -333,6 +363,6 @@ task.spawn(function()
 			Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
 			Lighting.Brightness = 4
 		end
-		task.wait(1) -- Changed from 5 to 1 second
+		task.wait(1)
 	end
 end)
