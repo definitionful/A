@@ -1,4 +1,4 @@
--- GUI + Hitbox Script
+-- GUI + Hitbox Script (Head version)
 
 getgenv().HBE = true
 getgenv().HitboxSize = 15
@@ -7,7 +7,6 @@ getgenv().Transparency = 0.5
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local RunService = game:GetService("RunService")
-local StarterGui = game:GetService("StarterGui")
 
 -- GUI Creation
 local function createGUI()
@@ -89,7 +88,7 @@ end
 
 createGUI()
 
--- Get Character Parent
+-- Character Parent Helper
 local function GetCharParent()
     local charParent
     repeat wait() until LocalPlayer.Character
@@ -102,13 +101,14 @@ local function GetCharParent()
     return charParent
 end
 
+-- Optional metatable protection
 pcall(function()
     local mt = getrawmetatable(game)
     setreadonly(mt, false)
     local old = mt.__index
     mt.__index = function(Self, Key)
-        if tostring(Self) == "HumanoidRootPart" and tostring(Key) == "Size" then
-            return Vector3.new(2,2,1)
+        if tostring(Self) == "Head" and tostring(Key) == "Size" then
+            return Vector3.new(2, 1, 1)
         end
         return old(Self, Key)
     end
@@ -118,29 +118,37 @@ end)
 local CHAR_PARENT = GetCharParent()
 local HITBOX_COLOUR = Color3.fromRGB(255,0,0)
 
+-- Assign hitbox to Head
 local function AssignHitboxes(player)
     if player == LocalPlayer then return end
 
     local connection
     connection = RunService.RenderStepped:Connect(function()
         local char = CHAR_PARENT:FindFirstChild(player.Name)
-        if getgenv().HBE and char and char:FindFirstChild("HumanoidRootPart") then
-            local size = Vector3.new(getgenv().HitboxSize, getgenv().HitboxSize, getgenv().HitboxSize)
-            char.HumanoidRootPart.Size = size
-            char.HumanoidRootPart.Color = HITBOX_COLOUR
-            char.HumanoidRootPart.CanCollide = false
-            char.HumanoidRootPart.Transparency = getgenv().Transparency
-        elseif char and char:FindFirstChild("HumanoidRootPart") then
-            char.HumanoidRootPart.Size = Vector3.new(2,2,1)
-            char.HumanoidRootPart.Transparency = 1
+        if char and char:FindFirstChild("Head") then
+            local head = char.Head
+            if getgenv().HBE then
+                local size = Vector3.new(getgenv().HitboxSize, getgenv().HitboxSize, getgenv().HitboxSize)
+                head.Size = size
+                head.Color = HITBOX_COLOUR
+                head.CanCollide = false
+                head.Transparency = getgenv().Transparency
+                head.Material = Enum.Material.ForceField
+            else
+                head.Size = Vector3.new(2, 1, 1)
+                head.Transparency = 0
+                head.Material = Enum.Material.Plastic
+            end
         end
     end)
 end
 
+-- Apply to existing players
 for _, player in ipairs(Players:GetPlayers()) do
     AssignHitboxes(player)
 end
 
+-- Apply to new players
 Players.PlayerAdded:Connect(function(player)
     AssignHitboxes(player)
 end)
