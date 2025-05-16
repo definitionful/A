@@ -1,0 +1,32 @@
+-- Get and modify the metatable of the game
+local mt = getrawmetatable(game)
+setreadonly(mt, false)
+
+local oldIndex = mt.__index
+local oldNewIndex = mt.__newindex
+
+-- Default Size to spoof
+local spoofedSize = Vector3.new(2, 1, 1)
+
+-- Hook __index
+mt.__index = newcclosure(function(tbl, key)
+    if typeof(tbl) == "Instance" and tbl:IsA("BasePart") and tbl.Name == "HumanoidRootPart" then
+        if key == "Size" then
+            return spoofedSize
+        end
+    end
+    return oldIndex(tbl, key)
+end)
+
+-- Hook __newindex
+mt.__newindex = newcclosure(function(tbl, key, value)
+    if typeof(tbl) == "Instance" and tbl:IsA("BasePart") and tbl.Name == "HumanoidRootPart" then
+        if key == "Size" then
+            value = spoofedSize  -- Force set to default (optional)
+        end
+    end
+    return oldNewIndex(tbl, key, value)
+end)
+
+-- Restore read-only
+setreadonly(mt, true)
