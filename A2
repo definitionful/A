@@ -1,32 +1,177 @@
--- Get and modify the metatable of the game
-local mt = getrawmetatable(game)
-setreadonly(mt, false)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
-local oldIndex = mt.__index
-local oldNewIndex = mt.__newindex
+local localPlayer = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+local mouse = localPlayer:GetMouse()
 
--- Default Size to spoof
-local spoofedSize = Vector3.new(2, 1, 1)
+-- Settings
+local circleRadius = 120
+local predictionTime = 0.2
+local smoothSpeed = 5
 
--- Hook __index
-mt.__index = newcclosure(function(tbl, key)
-    if typeof(tbl) == "Instance" and tbl:IsA("BasePart") and tbl.Name == "HumanoidRootPart" then
-        if key == "Size" then
-            return spoofedSize
-        end
-    end
-    return oldIndex(tbl, key)
+local isTrackingEnabled = false
+local trackedTarget = nil
+local trackedHighlight = nil
+local hue = 0
+
+-- UI: Mouse circle
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "TargetCircleUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+
+local circle = Instance.new("Frame")
+circle.Size = UDim2.fromOffset(circleRadius * 2, circleRadius * 2)
+circle.AnchorPoint = Vector2.new(0.5, 0.5)
+circle.Position = UDim2.new(0, mouse.X, 0, mouse.Y)
+circle.BackgroundTransparency = 1
+circle.BorderSizePixel = 0
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(1, 0)
+corner.Parent = circle
+
+local stroke = Instance.new("UIStroke")
+stroke.Thickness = 1.5
+stroke.Transparency = 0
+stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+stroke.Color = Color3.fromHSV(0, 1, 1)
+stroke.Parent = circle
+
+circle.Parent = screenGui
+
+-- Utilities
+local function isFullyInvisible(character)
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") and part.Transparency < 1 then
+			return false
+		end
+	end
+	return true
+end
+
+local function getScreenPosition(part)
+	local success, screenPos = pcall(function()
+		return camera:WorldToViewportPoint(part.Position)
+	end)
+	if success and screenPos.Z > 0 then
+		return Vector2.new(screenPos.X, screenPos.Y)
+	end
+	return nil
+end
+
+local function getTargets()
+	local validTargets = {}
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= localPlayer then
+			local char = player.Character
+			if char and char:FindFirstChild("Head") and char:FindFirstChild("Humanoid") then
+				local humanoid = char.Humanoid
+				if humanoid.Health > 0 and not isFullyInvisible(char) then
+					table.insert(validTargets, { part = char.Head, model = char, teamColor = player.TeamColor.Color })
+				end
+			end
+		end
+	end
+
+	local npc = Workspace:FindFirstChild("NPC Test")
+	if npc and npc:FindFirstChild("Head") and npc:FindFirstChild("Humanoid") then
+		if npc.Humanoid.Health > 0 and not isFullyInvisible(npc) then
+			table.insert(validTargets, { part = npc.Head, model = npc, teamColor = Color3.new(1, 1, 1) }) -- white
+		end
+	end
+
+	return validTargets
+end
+
+-- Highlight control
+local function clearHighlight()
+	if trackedHighlight then
+		trackedHighlight:Destroy()
+		trackedHighlight = nil
+	end
+end
+
+local function addHighlight(targetModel, color)
+	clearHighlight()
+	local highlight = Instance.new("Highlight")
+	highlight.FillTransparency = 1
+	highlight.OutlineTransparency = 0
+	highlight.OutlineColor = color
+	highlight.Adornee = targetModel
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Parent = targetModel
+	trackedHighlight = highlight
+end
+
+-- Main render loop
+RunService.RenderStepped:Connect(function(dt)
+	-- Rainbow outline and mouse circle position
+	hue = (hue + dt * 0.2) % 1
+	stroke.Color = Color3.fromHSV(hue, 1, 1)
+	circle.Position = UDim2.new(0, mouse.X, 0, mouse.Y)
+
+	if not isTrackingEnabled then
+		clearHighlight()
+		trackedTarget = nil
+		return
+	end
+
+	-- If no current target, find closest valid one
+	if not trackedTarget then
+		local closest, minDist = nil, math.huge
+		for _, data in ipairs(getTargets()) do
+			local screenPos = getScreenPosition(data.part)
+			if screenPos then
+				local dist = (screenPos - Vector2.new(mouse.X, mouse.Y)).Magnitude
+				if dist <= circleRadius and dist < minDist then
+					closest = data
+					minDist = dist
+				end
+			end
+		end
+
+		if closest then
+			trackedTarget = closest.part
+			addHighlight(closest.model, closest.teamColor)
+		end
+	else
+		-- Validate current target
+		local model = trackedTarget:FindFirstAncestorOfClass("Model")
+		local humanoid = model and model:FindFirstChild("Humanoid")
+
+		if not model or not humanoid or humanoid.Health <= 0 or isFullyInvisible(model) then
+			clearHighlight()
+			trackedTarget = nil
+			return
+		end
+
+		local screenPos = getScreenPosition(trackedTarget)
+		if not screenPos or (screenPos - Vector2.new(mouse.X, mouse.Y)).Magnitude > circleRadius then
+			clearHighlight()
+			trackedTarget = nil
+			return
+		end
+
+		-- Smooth camera tracking with prediction
+		local predictedPos = trackedTarget.Position + trackedTarget.Velocity * predictionTime
+		local camPos = camera.CFrame.Position
+		local lookAt = CFrame.new(camPos, predictedPos)
+		camera.CFrame = camera.CFrame:Lerp(lookAt, dt * smoothSpeed)
+	end
 end)
 
--- Hook __newindex
-mt.__newindex = newcclosure(function(tbl, key, value)
-    if typeof(tbl) == "Instance" and tbl:IsA("BasePart") and tbl.Name == "HumanoidRootPart" then
-        if key == "Size" then
-            value = spoofedSize  -- Force set to default (optional)
-        end
-    end
-    return oldNewIndex(tbl, key, value)
+-- Toggle tracking with E
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.E then
+		isTrackingEnabled = not isTrackingEnabled
+		clearHighlight()
+		trackedTarget = nil
+		warn(isTrackingEnabled and "Tracking ENABLED" or "Tracking DISABLED")
+	end
 end)
-
--- Restore read-only
-setreadonly(mt, true)
