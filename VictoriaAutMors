@@ -248,6 +248,12 @@ createCheckbox(10, function()
 	return headModEnabled
 end)
 
+createLabel("Team Blacklist:", 70)
+createCheckbox(70, function()
+    teamDropdownOpen = not teamDropdownOpen
+    return teamDropdownOpen
+end)
+
 createLabel("Team Labels:", 40)
 createCheckbox(40, function()
 	teamLabelsEnabled = not teamLabelsEnabled
@@ -300,14 +306,55 @@ Players.PlayerAdded:Connect(function(p)
 	if p ~= LocalPlayer then hookPlayer(p) end
 end)
 
--- Runtime Loop (Head Mod only)
+-- Runtime Loop (Head Mod + Team Labels) 🚀
 task.spawn(function()
-	while true do
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= LocalPlayer then
-				if headModEnabled then pcall(function() applyHeadMod(p) end) end
-			end
-		end
-		task.wait(1)
-	end
+    while true do
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer then
+                local char = p.Character
+                local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Health > 0 then
+                    -- 🧠 Head Mod (R6 only, respects blacklist)
+                    if headModEnabled and humanoid.RigType == Enum.HumanoidRigType.R6 and not ignoredTeams[p.Team and p.Team.Name or ""] then
+                        pcall(function() applyHeadMod(p) end)
+                    else
+                        -- Reset head instantly when disabled
+                        local head = char and findHead(char)
+                        if head then
+                            head.Size = DEFAULT_HEAD_SIZE_R6
+                            head.Transparency = 0
+                            head.CanCollide = true
+                            head.Massless = false
+                        end
+                    end
+
+                    -- 🏷️ Team Labels (independent)
+                    local existingLabel = char:FindFirstChild("TeamLabel")
+                    if teamLabelsEnabled then
+                        if not existingLabel then
+                            createTeamLabel(p)
+                        end
+                    else
+                        if existingLabel then
+                            existingLabel:Destroy()
+                        end
+                    end
+                else
+                    -- Cleanup on death
+                    if char then
+                        local head = findHead(char)
+                        if head then
+                            head.Size = humanoid and humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
+                            head.Transparency = 0
+                            head.CanCollide = true
+                            head.Massless = false
+                        end
+                        local existingLabel = char:FindFirstChild("TeamLabel")
+                        if existingLabel then existingLabel:Destroy() end
+                    end
+                end
+            end
+        end
+        task.wait(0.5) -- ⏱️ Refresh rate
+    end
 end)
