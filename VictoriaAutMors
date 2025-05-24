@@ -1,0 +1,313 @@
+-- Services
+local Players = game:GetService("Players")
+local Teams = game:GetService("Teams")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- Settings
+local DEFAULT_HEAD_SIZE_R15 = Vector3.new(1.198, 1.202, 1.198)
+local DEFAULT_HEAD_SIZE_R6 = Vector3.new(2, 1, 1)
+local DEFAULT_KEY = Enum.KeyCode.LeftAlt
+local DEFAULT_HEAD_MOD_KEY = Enum.KeyCode.H
+local keybind = DEFAULT_KEY
+local headModKey = DEFAULT_HEAD_MOD_KEY
+local ignoredTeams = {}
+local teamLabelsEnabled = false
+local teamDropdownOpen = false
+
+-- Variables
+local function getDefaultHeadSize()
+	local char = LocalPlayer.Character
+	if char and char:FindFirstChild("Humanoid") then
+		return char.Humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
+	end
+	return DEFAULT_HEAD_SIZE_R15
+end
+
+local defaultHeadSize = getDefaultHeadSize()
+local headModEnabled = false
+
+-- Helper Functions
+local function findHead(char)
+	for _, part in ipairs(char:GetChildren()) do
+		if part:IsA("BasePart") and string.lower(part.Name) == "head" then
+			return part
+		end
+	end
+	return nil
+end
+
+local function applyHeadMod(player)
+	if player == LocalPlayer or ignoredTeams[player.Team and player.Team.Name or ""] then return end
+	local char = player.Character
+	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+
+	local head = char and findHead(char)
+	if head then
+		if humanoid.Health > 0 then
+			local baseSize = humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
+			head.Size = baseSize * getHeadSize()
+			head.Transparency = getTransparency()
+			head.CanCollide = false
+			head.Massless = true
+		else
+			-- Reset head on death
+			local defaultSize = humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
+			head.Size = defaultSize
+			head.Transparency = 0
+			head.CanCollide = true
+			head.Massless = false
+		end
+	end
+end
+
+local function applyAllHeadMods()
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then
+			pcall(function() applyHeadMod(p) end)
+		end
+	end
+end
+
+-- Team Labels Functions
+local function createTeamLabel(player)
+    local char = player.Character
+    if not char then return end
+    local head = findHead(char)
+    if not head then return end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "TeamLabel"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 100, 0, 20)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = char
+
+    local label = Instance.new("TextLabel", billboard)
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+
+    -- Set text based on display name
+    local username = player.Name
+    local displayName = player.DisplayName
+    if displayName and displayName ~= username then
+        label.Text = username .. " (@" .. displayName .. ")"
+    else
+        label.Text = username
+    end
+
+    label.TextColor3 = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
+    label.TextStrokeTransparency = 0.5
+    label.TextScaled = true
+end
+
+local function removeTeamLabel(player)
+	local char = player.Character
+	if not char then return end
+	local label = char:FindFirstChild("TeamLabel")
+	if label then
+		label:Destroy()
+	end
+end
+
+local function updateAllTeamLabels()
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then
+			removeTeamLabel(p)
+			if teamLabelsEnabled then
+				createTeamLabel(p)
+			end
+		end
+	end
+end
+
+-- GUI
+local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+gui.Name = "ClientESP_UI"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 1000
+
+local openButton = Instance.new("TextButton", gui)
+openButton.Size = UDim2.new(0, 100, 0, 40)
+openButton.Position = UDim2.new(0, 10, 0, 10)
+openButton.Text = "Open Menu"
+openButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+openButton.TextColor3 = Color3.new(1, 1, 1)
+openButton.Active = true
+openButton.Draggable = true
+
+local menu = Instance.new("Frame", gui)
+menu.Size = UDim2.new(0, 250, 0, 400)
+menu.Position = UDim2.new(0, 10, 0, 60)
+menu.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+menu.Visible = false
+menu.Active = true
+menu.Draggable = true
+
+RunService.RenderStepped:Connect(function()
+	for _, frame in ipairs({menu, openButton}) do
+		if frame.Visible then
+			local pos = frame.AbsolutePosition
+			local size = frame.AbsoluteSize
+			local guiSize = gui.AbsoluteSize
+			frame.Position = UDim2.new(0, math.clamp(pos.X, 0, guiSize.X - size.X), 0, math.clamp(pos.Y, 0, guiSize.Y - size.Y))
+		end
+	end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if not gameProcessed then
+		if input.KeyCode == keybind then
+			menu.Visible = not menu.Visible
+		elseif input.KeyCode == headModKey then
+			headModEnabled = not headModEnabled
+			applyAllHeadMods()
+		end
+	end
+end)
+
+openButton.MouseButton1Click:Connect(function()
+	menu.Visible = not menu.Visible
+end)
+
+local function createLabel(text, y)
+	local lbl = Instance.new("TextLabel", menu)
+	lbl.Position = UDim2.new(0, 10, 0, y)
+	lbl.Size = UDim2.new(0, 200, 0, 20)
+	lbl.BackgroundTransparency = 1
+	lbl.TextColor3 = Color3.new(1, 1, 1)
+	lbl.Text = text
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	return lbl
+end
+
+local function createCheckbox(y, onToggle)
+	local box = Instance.new("TextButton", menu)
+	box.Size = UDim2.new(0, 20, 0, 20)
+	box.Position = UDim2.new(0, 90, 0, y)
+	box.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	box.BorderColor3 = Color3.new(0, 0, 0)
+	box.Text = ""
+	box.MouseButton1Click:Connect(function()
+		local enabled = onToggle()
+		box.BackgroundColor3 = enabled and Color3.new(0, 1, 0) or Color3.fromRGB(80, 80, 80)
+	end)
+	return box
+end
+
+local function createSlider(y, min, max, default)
+	local frame = Instance.new("Frame", menu)
+	frame.Position = UDim2.new(0, 10, 0, y)
+	frame.Size = UDim2.new(0, 200, 0, 20)
+	frame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+
+	local fill = Instance.new("Frame", frame)
+	fill.Size = UDim2.new((default - min)/(max - min), 0, 1, 0)
+	fill.BackgroundColor3 = Color3.fromRGB(120, 120, 255)
+
+	local value = default
+	local dragging = false
+
+	local function update(x)
+		local relX = math.clamp((x - frame.AbsolutePosition.X) / frame.AbsoluteSize.X, 0, 1)
+		fill.Size = UDim2.new(relX, 0, 1, 0)
+		value = min + relX * (max - min)
+	end
+
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			update(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			update(input.Position.X)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	return function() return value end
+end
+
+-- Controls
+createLabel("Head Mod:", 10)
+createCheckbox(10, function()
+	headModEnabled = not headModEnabled
+	applyAllHeadMods()
+	return headModEnabled
+end)
+
+createLabel("Team Labels:", 40)
+createCheckbox(40, function()
+	teamLabelsEnabled = not teamLabelsEnabled
+	updateAllTeamLabels()
+	return teamLabelsEnabled
+end)
+
+createLabel("Head Size:", 100)
+getHeadSize = createSlider(120, 1, 100, defaultHeadSize.X)
+
+createLabel("Transparency:", 150)
+getTransparency = createSlider(170, 0, 1, 0)
+
+-- (Remaining parts of the code such as keybinds, reset, etc., unchanged)
+
+-- Hook players
+local function hookPlayer(player)
+	player.CharacterAdded:Connect(function(char)
+		task.wait(1)
+
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid.Died:Connect(function()
+				local head = findHead(char)
+				if head then
+					local defaultSize = humanoid.RigType == Enum.HumanoidRigType.R15 and DEFAULT_HEAD_SIZE_R15 or DEFAULT_HEAD_SIZE_R6
+					head.Size = defaultSize
+					head.Transparency = 0
+					head.CanCollide = true
+					head.Massless = false
+				end
+			end)
+		end
+
+		if teamLabelsEnabled then createTeamLabel(player) end
+	end)
+
+	player:GetPropertyChangedSignal("Team"):Connect(function()
+		if teamLabelsEnabled then
+			removeTeamLabel(player)
+			createTeamLabel(player)
+		end
+	end)
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+	if p ~= LocalPlayer then hookPlayer(p) end
+end
+Players.PlayerAdded:Connect(function(p)
+	if p ~= LocalPlayer then hookPlayer(p) end
+end)
+
+-- Runtime Loop (Head Mod only)
+task.spawn(function()
+	while true do
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer then
+				if headModEnabled then pcall(function() applyHeadMod(p) end) end
+			end
+		end
+		task.wait(1)
+	end
+end)
