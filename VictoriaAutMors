@@ -127,6 +127,7 @@ end
 
 -- GUI
 local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+gui.Parent = game:GetService("CoreGui")
 gui.Name = "ClientESP_UI"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 1000
