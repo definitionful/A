@@ -115,6 +115,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		elseif input.KeyCode == headModKey then
 			headModEnabled = not headModEnabled
 			applyAllHeadMods()
+		elseif input.KeyCode == Enum.KeyCode.Escape then
+			menu.Visible = true
 		end
 	end
 end)
