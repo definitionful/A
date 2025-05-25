@@ -230,47 +230,48 @@ getHeadSize = createSlider(120, 1, 100, DEFAULT_HEAD_SIZE.X)
 createLabel("Transparency:", 150)
 getTransparency = createSlider(170, 0, 1, 0)
 
--- Team Blacklist Dropdown (Restored)
-createLabel("Blacklist Teams:", 200)
-local teamDropdown = Instance.new("TextButton", menu)
-teamDropdown.Position = UDim2.new(0, 10, 0, 220)
-teamDropdown.Size = UDim2.new(0, 200, 0, 20)
-teamDropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-teamDropdown.Text = "Select Team"
+-- Team Ignore Dropdown
+createLabel("Ignore Team (Head):", 365)
+local dropdown = Instance.new("TextButton", menu)
+dropdown.Size = UDim2.new(0, 200, 0, 25)
+dropdown.Position = UDim2.new(0, 10, 0, 385)
+dropdown.Text = "Select team to ignore..."
+dropdown.TextColor3 = Color3.new(1, 1, 1)
+dropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 
-local dropdownFrame = Instance.new("Frame", menu)
-dropdownFrame.Position = UDim2.new(0, 10, 0, 240)
-dropdownFrame.Size = UDim2.new(0, 200, 0, 120)
-dropdownFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-dropdownFrame.Visible = false
+local function toggleTeamIgnore(teamName)
+	if ignoredTeams[teamName] then
+		ignoredTeams[teamName] = nil
+	else
+		ignoredTeams[teamName] = true
+	end
+	applyAllHeadMods()
+end
 
-teamDropdown.MouseButton1Click:Connect(function()
-	dropdownFrame.Visible = not dropdownFrame.Visible
+dropdown.MouseButton1Click:Connect(function()
+	teamDropdownOpen = not teamDropdownOpen
+	for _, obj in ipairs(menu:GetChildren()) do
+		if obj.Name == "TeamOption" then obj:Destroy() end
+	end
+
+	if not teamDropdownOpen then return end
+
+	local y = 415
+	for _, team in ipairs(Teams:GetTeams()) do
+		local btn = Instance.new("TextButton", menu)
+		btn.Name = "TeamOption"
+		btn.Position = UDim2.new(0, 10, 0, y)
+		btn.Size = UDim2.new(0, 200, 0, 20)
+		btn.Text = (ignoredTeams[team.Name] and "[✔] " or "[  ] ") .. team.Name
+		btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+		btn.TextColor3 = Color3.new(1, 1, 1)
+		btn.MouseButton1Click:Connect(function()
+			toggleTeamIgnore(team.Name)
+			btn.Text = (ignoredTeams[team.Name] and "[✔] " or "[  ] ") .. team.Name
+		end)
+		y += 25
+	end
 end)
-
-local function addTeamButton(team)
-	local btn = Instance.new("TextButton", dropdownFrame)
-	btn.Size = UDim2.new(1, 0, 0, 20)
-	btn.Text = team.Name
-	btn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-	btn.TextColor3 = Color3.new(1, 1, 1)
-
-	btn.MouseButton1Click:Connect(function()
-		if ignoredTeams[team.Name] then
-			ignoredTeams[team.Name] = nil
-			btn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-		else
-			ignoredTeams[team.Name] = true
-			btn.BackgroundColor3 = Color3.new(1, 0, 0)
-		end
-	end)
-end
-
-for _, team in ipairs(Teams:GetTeams()) do
-	addTeamButton(team)
-end
-
-Teams.ChildAdded:Connect(addTeamButton)
 
 -- Runtime Loop
 task.spawn(function()
