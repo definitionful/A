@@ -9,9 +9,7 @@ local LocalPlayer = Players.LocalPlayer
 -- Settings
 local DEFAULT_HEAD_SIZE = Vector3.new(2, 1, 1)
 local DEFAULT_KEY = Enum.KeyCode.LeftAlt
-local DEFAULT_HEAD_MOD_KEY = Enum.KeyCode.H
 local keybind = DEFAULT_KEY
-local headModKey = DEFAULT_HEAD_MOD_KEY
 local ignoredTeams = {}
 local teamLabelsEnabled = false
 
@@ -60,54 +58,50 @@ local function applyAllHeadMods()
 	end
 end
 
--- Team Labels
+-- Team Labels with Live Health
 local function createTeamLabel(player)
-    local char = player.Character
-    if not char then return end
-    local head = findHead(char)
-    if not head then return end
+	local char = player.Character
+	if not char then return end
+	local head = findHead(char)
+	if not head then return end
 
-    -- Create Billboard
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "TeamLabel"
-    billboard.Adornee = head
-    billboard.Size = UDim2.new(0, 100, 0, 40)  -- Increased height for two lines
-    billboard.StudsOffset = Vector3.new(0, 2, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Parent = char
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "TeamLabel"
+	billboard.Adornee = head
+	billboard.Size = UDim2.new(0, 100, 0, 40)
+	billboard.StudsOffset = Vector3.new(0, 2, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Parent = char
 
-    -- Player Name Label
-    local nameLabel = Instance.new("TextLabel", billboard)
-    nameLabel.Name = "NameLabel"
-    nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
-    nameLabel.Position = UDim2.new(0, 0, 0, 0)
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.Text = player.Name
-    nameLabel.TextColor3 = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
-    nameLabel.TextStrokeTransparency = 0.5
-    nameLabel.TextScaled = true
+	local nameLabel = Instance.new("TextLabel", billboard)
+	nameLabel.Name = "NameLabel"
+	nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+	nameLabel.Position = UDim2.new(0, 0, 0, 0)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = player.Name
+	nameLabel.TextColor3 = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
+	nameLabel.TextStrokeTransparency = 0.5
+	nameLabel.TextScaled = true
 
-    -- Health Label
-    local healthLabel = Instance.new("TextLabel", billboard)
-    healthLabel.Name = "HealthLabel"
-    healthLabel.Size = UDim2.new(1, 0, 0.5, 0)
-    healthLabel.Position = UDim2.new(0, 0, 0.5, 0)
-    healthLabel.BackgroundTransparency = 1
-    healthLabel.Text = "Health: 100"
-    healthLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-    healthLabel.TextStrokeTransparency = 0.5
-    healthLabel.TextScaled = true
+	local healthLabel = Instance.new("TextLabel", billboard)
+	healthLabel.Name = "HealthLabel"
+	healthLabel.Size = UDim2.new(1, 0, 0.5, 0)
+	healthLabel.Position = UDim2.new(0, 0, 0.5, 0)
+	healthLabel.BackgroundTransparency = 1
+	healthLabel.Text = "Health: 100"
+	healthLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+	healthLabel.TextStrokeTransparency = 0.5
+	healthLabel.TextScaled = true
 
-    -- Update health over time
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        task.spawn(function()
-            while humanoid.Parent and billboard.Parent do
-                healthLabel.Text = string.format("Health: %d", humanoid.Health)
-                task.wait(0.5)
-            end
-        end)
-    end
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		task.spawn(function()
+			while humanoid.Parent and billboard.Parent do
+				healthLabel.Text = string.format("Health: %d", humanoid.Health)
+				task.wait(0.2)
+			end
+		end)
+	end
 end
 
 local function removeTeamLabel(player)
@@ -130,7 +124,7 @@ local function updateAllTeamLabels()
 	end
 end
 
--- GUI
+-- GUI Setup
 local gui = Instance.new("ScreenGui", game:GetService("CoreGui"))
 gui.Name = "ClientESP_UI"
 gui.ResetOnSpawn = false
@@ -153,14 +147,11 @@ menu.Visible = false
 menu.Active = true
 menu.Draggable = true
 
--- Toggle Menu Keybinds
+-- Toggle Menu Keybind
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed then
 		if input.KeyCode == keybind then
 			menu.Visible = not menu.Visible
-		elseif input.KeyCode == headModKey then
-			headModEnabled = not headModEnabled
-			applyAllHeadMods()
 		end
 	end
 end)
@@ -169,7 +160,7 @@ openButton.MouseButton1Click:Connect(function()
 	menu.Visible = not menu.Visible
 end)
 
--- Controls
+-- GUI Controls
 local function createLabel(text, y)
 	local lbl = Instance.new("TextLabel", menu)
 	lbl.Position = UDim2.new(0, 10, 0, y)
