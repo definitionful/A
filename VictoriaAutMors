@@ -68,8 +68,8 @@ local function createTeamLabel(player)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "TeamLabel"
 	billboard.Adornee = head
-	billboard.Size = UDim2.new(0, 100, 0, 40)
-	billboard.StudsOffset = Vector3.new(0, 2, 0)
+	billboard.Size = UDim2.new(0, 70, 0, 30)  -- Smaller
+	billboard.StudsOffset = Vector3.new(0, 1.5, 0)  -- Slightly lower
 	billboard.AlwaysOnTop = true
 	billboard.Parent = char
 
@@ -81,7 +81,8 @@ local function createTeamLabel(player)
 	nameLabel.Text = player.Name
 	nameLabel.TextColor3 = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
 	nameLabel.TextStrokeTransparency = 0.5
-	nameLabel.TextScaled = true
+	nameLabel.TextScaled = false
+	nameLabel.TextSize = 12  -- Smaller font
 
 	local healthLabel = Instance.new("TextLabel", billboard)
 	healthLabel.Name = "HealthLabel"
@@ -91,7 +92,8 @@ local function createTeamLabel(player)
 	healthLabel.Text = "Health: 100"
 	healthLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
 	healthLabel.TextStrokeTransparency = 0.5
-	healthLabel.TextScaled = true
+	healthLabel.TextScaled = false
+	healthLabel.TextSize = 10  -- Smaller font
 
 	local humanoid = char:FindFirstChildOfClass("Humanoid")
 	if humanoid then
