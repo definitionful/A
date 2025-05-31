@@ -62,14 +62,16 @@ end
 local function createTeamLabel(player)
 	local char = player.Character
 	if not char then return end
+	if char:FindFirstChild("TeamLabel") then return end
+
 	local head = findHead(char)
 	if not head then return end
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "TeamLabel"
 	billboard.Adornee = head
-	billboard.Size = UDim2.new(0, 70, 0, 30)  -- Smaller
-	billboard.StudsOffset = Vector3.new(0, 1.5, 0)  -- Slightly lower
+	billboard.Size = UDim2.new(0, 70, 0, 30)
+	billboard.StudsOffset = Vector3.new(0, 1.5, 0)
 	billboard.AlwaysOnTop = true
 	billboard.Parent = char
 
@@ -82,7 +84,7 @@ local function createTeamLabel(player)
 	nameLabel.TextColor3 = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
 	nameLabel.TextStrokeTransparency = 0.5
 	nameLabel.TextScaled = false
-	nameLabel.TextSize = 12  -- Smaller font
+	nameLabel.TextSize = 12
 
 	local healthLabel = Instance.new("TextLabel", billboard)
 	healthLabel.Name = "HealthLabel"
@@ -93,7 +95,7 @@ local function createTeamLabel(player)
 	healthLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
 	healthLabel.TextStrokeTransparency = 0.5
 	healthLabel.TextScaled = false
-	healthLabel.TextSize = 10  -- Smaller font
+	healthLabel.TextSize = 10
 
 	local humanoid = char:FindFirstChildOfClass("Humanoid")
 	if humanoid then
@@ -292,7 +294,7 @@ dropdown.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Runtime Loop
+-- Runtime Loops
 task.spawn(function()
 	while true do
 		for _, p in ipairs(Players:GetPlayers()) do
@@ -323,6 +325,26 @@ task.spawn(function()
 			end
 		end
 		task.wait(0.5)
+	end
+end)
+
+task.spawn(function()
+	while true do
+		if teamLabelsEnabled then
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p ~= LocalPlayer then
+					local char = p.Character
+					if char then
+						local head = findHead(char)
+						local label = char:FindFirstChild("TeamLabel")
+						if head and not label then
+							createTeamLabel(p)
+						end
+					end
+				end
+			end
+		end
+		task.wait(1)
 	end
 end)
 
