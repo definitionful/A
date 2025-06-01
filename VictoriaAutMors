@@ -250,7 +250,9 @@ dropdown.MouseButton1Click:Connect(function()
 	for _, obj in ipairs(menu:GetChildren()) do
 		if obj.Name == "TeamOption" then obj:Destroy() end
 	end
+
 	if not teamDropdownOpen then return end
+
 	local y = 415
 	for _, team in ipairs(Teams:GetTeams()) do
 		local btn = Instance.new("TextButton", menu)
@@ -258,16 +260,12 @@ dropdown.MouseButton1Click:Connect(function()
 		btn.Position = UDim2.new(0, 10, 0, y)
 		btn.Size = UDim2.new(0, 200, 0, 20)
 		btn.Text = (ignoredTeams[team.Name] and "[✔] " or "[  ] ") .. team.Name
-        applyAllHeadMods()
 		btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 		btn.TextColor3 = Color3.new(1, 1, 1)
 		btn.MouseButton1Click:Connect(function()
-			if ignoredTeams[team.Name] then
-				ignoredTeams[team.Name] = nil
-			else
-				ignoredTeams[team.Name] = true
-			end
+			toggleTeamIgnore(team.Name)
 			btn.Text = (ignoredTeams[team.Name] and "[✔] " or "[  ] ") .. team.Name
+			applyAllHeadMods()  -- Force live update on all heads!
 		end)
 		y += 25
 	end
