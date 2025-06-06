@@ -1,4 +1,3 @@
--- Optimized ESP Script
 local Players = game:GetService("Players")
 local Teams = game:GetService("Teams")
 local RunService = game:GetService("RunService")
@@ -15,6 +14,7 @@ local teamLabelsEnabled = false
 local headModEnabled = false
 local getHeadSize = function() return 1 end
 local getTransparency = function() return 0 end
+local canCollideEnabled = false
 
 local function findHead(char)
 	for _, part in ipairs(char:GetChildren()) do
@@ -45,7 +45,7 @@ local function applyHeadMod(player)
 	if headModEnabled and humanoid.Health > 0 then
 		head.Size = DEFAULT_HEAD_SIZE * getHeadSize()
 		head.Transparency = getTransparency()
-		head.CanCollide = false
+		head.CanCollide = canCollideEnabled
 		head.Massless = true
 	else
 		restoreHeadDefaults(head)
@@ -63,14 +63,15 @@ end
 local function createTeamLabel(player)
 	local char = player.Character
 	if not char or char:FindFirstChild("TeamLabel") then return end
-	local head = findHead(char)
-	if not head then return end
+
+	local rootPart = char:FindFirstChild("HumanoidRootPart")
+	if not rootPart then return end
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "TeamLabel"
-	billboard.Adornee = head
+	billboard.Adornee = rootPart
 	billboard.Size = UDim2.new(0, 70, 0, 30)
-	billboard.StudsOffset = Vector3.new(0, 1.5, 0)
+	billboard.StudsOffset = Vector3.new(0, 3, 0) -- Mimic above-head position
 	billboard.AlwaysOnTop = true
 	billboard.Parent = char
 
@@ -243,6 +244,12 @@ createCheckbox(40, function()
 	teamLabelsEnabled = not teamLabelsEnabled
 	updateAllTeamLabels()
 	return teamLabelsEnabled
+end)
+
+createLabel("CanCollide:", 70)
+createCheckbox(70, function()
+	canCollideEnabled = not canCollideEnabled
+	return canCollideEnabled
 end)
 
 createLabel("Head Size:", 100)
