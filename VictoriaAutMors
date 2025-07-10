@@ -2,10 +2,10 @@ local Players = game:GetService("Players")
 local Teams = game:GetService("Teams")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 
-local DEFAULT_HEAD_SIZE = Vector3.new(2, 1, 1)
 local DEFAULT_KEY = Enum.KeyCode.LeftAlt
 local keybind = DEFAULT_KEY
 local ignoredTeams = {}
@@ -16,21 +16,31 @@ local getHeadSize = function() return 1 end
 local getTransparency = function() return 0 end
 local canCollideEnabled = false
 
+local fadeInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
 local function findHead(char)
-	for _, part in ipairs(char:GetChildren()) do
-		if part:IsA("BasePart") and part.Name:lower() == "head" then
-			return part
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.RigType == Enum.HumanoidRigType.R15 then
+		return char:FindFirstChild("Head")
+	else
+		for _, part in ipairs(char:GetChildren()) do
+			if part:IsA("BasePart") and part.Name:lower() == "head" then
+				return part
+			end
 		end
 	end
 end
 
-local function restoreHeadDefaults(head)
-	if head then
-		head.Size = DEFAULT_HEAD_SIZE
-		head.Transparency = 0
-		head.CanCollide = true
-		head.Massless = false
+local function restoreHeadDefaults(head, humanoid)
+	if not head or not humanoid then return end
+	if humanoid.RigType == Enum.HumanoidRigType.R15 then
+		head.Size = Vector3.new(1.198, 1.202, 1.198)
+	else
+		head.Size = Vector3.new(2, 1, 1)
 	end
+	head.Transparency = 0
+	head.CanCollide = true
+	head.Massless = false
 end
 
 local function applyHeadMod(player)
@@ -38,40 +48,53 @@ local function applyHeadMod(player)
 	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
 	local head = char and findHead(char)
 	if not (humanoid and head) then return end
+
 	if ignoredTeams[player.Team and player.Team.Name or ""] then
-		restoreHeadDefaults(head)
+		restoreHeadDefaults(head, humanoid)
 		return
 	end
+
 	if headModEnabled and humanoid.Health > 0 then
-		head.Size = DEFAULT_HEAD_SIZE * getHeadSize()
+		local baseSize = humanoid.RigType == Enum.HumanoidRigType.R15 and Vector3.new(1.198, 1.202, 1.198) or Vector3.new(2, 1, 1)
+		head.Size = baseSize * getHeadSize()
 		head.Transparency = getTransparency()
 		head.CanCollide = canCollideEnabled
 		head.Massless = true
 	else
-		restoreHeadDefaults(head)
+		restoreHeadDefaults(head, humanoid)
 	end
 end
 
 local function updateAllPlayers()
+	local localChar = LocalPlayer.Character
+	local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+	if not localRoot then return end
+
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
-			applyHeadMod(p)
+			local char = p.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if root and (localRoot.Position - root.Position).Magnitude <= 500 then
+				applyHeadMod(p)
+			end
 		end
 	end
 end
 
 local function createTeamLabel(player)
 	local char = player.Character
-	if not char or char:FindFirstChild("TeamLabel") then return end
+	if not char then return end
+	local existing = char:FindFirstChild("TeamLabel")
+	if existing then existing:Destroy() end
 
-	local rootPart = char:FindFirstChild("HumanoidRootPart")
+	local rootPart = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 2)
 	if not rootPart then return end
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "TeamLabel"
 	billboard.Adornee = rootPart
 	billboard.Size = UDim2.new(0, 70, 0, 30)
-	billboard.StudsOffset = Vector3.new(0, 3, 0) -- Mimic above-head position
+	billboard.StudsOffset = Vector3.new(0, 3, 0)
 	billboard.AlwaysOnTop = true
 	billboard.Parent = char
 
@@ -82,7 +105,7 @@ local function createTeamLabel(player)
 	nameLabel.TextColor3 = player.Team and player.Team.TeamColor.Color or Color3.new(1, 1, 1)
 	nameLabel.TextStrokeTransparency = 0.5
 	nameLabel.TextScaled = false
-	nameLabel.TextSize = 12
+	nameLabel.TextSize = 10
 
 	local healthLabel = Instance.new("TextLabel", billboard)
 	healthLabel.Position = UDim2.new(0, 0, 0.5, 0)
@@ -91,14 +114,24 @@ local function createTeamLabel(player)
 	healthLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
 	healthLabel.TextStrokeTransparency = 0.5
 	healthLabel.TextScaled = false
-	healthLabel.TextSize = 10
+	healthLabel.TextSize = 8
 
 	local humanoid = char:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		RunService.Heartbeat:Connect(function()
-			if billboard.Parent and humanoid.Parent then
-				healthLabel.Text = "Health: " .. math.max(0, humanoid.Health)
+		local lastHealth = -1
+		local function updateHealth()
+			if humanoid.Health ~= lastHealth then
+				lastHealth = humanoid.Health
+				healthLabel.Text = "Health: " .. math.max(0, math.floor(humanoid.Health))
 			end
+		end
+		local con
+		con = RunService.Heartbeat:Connect(function()
+			if not humanoid.Parent or not billboard.Parent then
+				con:Disconnect()
+				return
+			end
+			updateHealth()
 		end)
 	end
 end
@@ -111,10 +144,18 @@ local function removeTeamLabel(player)
 end
 
 local function updateAllTeamLabels()
+	local localChar = LocalPlayer.Character
+	local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+	if not localRoot then return end
+
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer then
+			local char = p.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+
 			removeTeamLabel(p)
-			if teamLabelsEnabled then
+
+			if teamLabelsEnabled and root and (localRoot.Position - root.Position).Magnitude <= 150 then
 				createTeamLabel(p)
 			end
 		end
@@ -132,7 +173,8 @@ local function constrainDrag(frame)
 	end)
 end
 
-local gui = Instance.new("ScreenGui", game:GetService("CoreGui"))
+local gui = Instance.new("ScreenGui")
+gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 gui.Name = "ClientESP_UI"
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 1000
@@ -156,17 +198,67 @@ menu.Active = true
 menu.Draggable = true
 constrainDrag(menu)
 
+local function fadeMenu(show)
+	if show then
+		menu.Visible = true
+		menu.BackgroundTransparency = 1
+		for _, child in pairs(menu:GetDescendants()) do
+			if child:IsA("GuiObject") then
+				child.BackgroundTransparency = 1
+				if child:IsA("TextLabel") or child:IsA("TextButton") then
+					child.TextTransparency = 1
+				end
+			end
+		end
+
+		TweenService:Create(menu, fadeInfo, {BackgroundTransparency = 0}):Play()
+		for _, child in pairs(menu:GetDescendants()) do
+			if child:IsA("GuiObject") then
+				TweenService:Create(child, fadeInfo, {BackgroundTransparency = 0}):Play()
+				if child:IsA("TextLabel") or child:IsA("TextButton") then
+					TweenService:Create(child, fadeInfo, {TextTransparency = 0}):Play()
+				end
+			end
+		end
+	else
+		local finishedCount = 0
+		local total = #menu:GetDescendants()
+
+		local function onFadeOutComplete()
+			finishedCount += 1
+			if finishedCount >= total then
+				menu.Visible = false
+			end
+		end
+
+		TweenService:Create(menu, fadeInfo, {BackgroundTransparency = 1}):Play()
+		for _, child in pairs(menu:GetDescendants()) do
+			if child:IsA("GuiObject") then
+				local bgTween = TweenService:Create(child, fadeInfo, {BackgroundTransparency = 1})
+				bgTween.Completed:Connect(onFadeOutComplete)
+				bgTween:Play()
+				if child:IsA("TextLabel") or child:IsA("TextButton") then
+					TweenService:Create(child, fadeInfo, {TextTransparency = 1}):Play()
+				end
+			end
+		end
+	end
+end
+
+openButton.MouseButton1Click:Connect(function()
+	fadeMenu(not menu.Visible)
+end)
+
 UserInputService.InputBegan:Connect(function(input, gpe)
 	if not gpe and input.KeyCode == keybind then
-		menu.Visible = not menu.Visible
+		fadeMenu(not menu.Visible)
 	end
 end)
 
-openButton.MouseButton1Click:Connect(function()
-	menu.Visible = not menu.Visible
-end)
+-- UI & Dropdown fix
+local teamDropdownOpen = false
 
-local function createLabel(text, y)
+local createLabel = function(text, y)
 	local lbl = Instance.new("TextLabel", menu)
 	lbl.Position = UDim2.new(0, 10, 0, y)
 	lbl.Size = UDim2.new(0, 200, 0, 20)
@@ -177,7 +269,7 @@ local function createLabel(text, y)
 	return lbl
 end
 
-local function createCheckbox(y, callback)
+local createCheckbox = function(y, callback)
 	local box = Instance.new("TextButton", menu)
 	box.Size = UDim2.new(0, 20, 0, 20)
 	box.Position = UDim2.new(0, 90, 0, y)
@@ -253,81 +345,132 @@ createCheckbox(70, function()
 end)
 
 createLabel("Head Size:", 100)
-getHeadSize = createSlider(120, 1, 100, DEFAULT_HEAD_SIZE.X)
+getHeadSize = createSlider(120, 1, 100, 1)
 
 createLabel("Transparency:", 150)
 getTransparency = createSlider(170, 0, 1, 0)
 
-createLabel("Ignore Team (Head):", 365)
+-- Fix dropdown
 local dropdown = Instance.new("TextButton", menu)
 dropdown.Size = UDim2.new(0, 200, 0, 25)
 dropdown.Position = UDim2.new(0, 10, 0, 385)
 dropdown.Text = "Select team to ignore..."
 dropdown.TextColor3 = Color3.new(1, 1, 1)
 dropdown.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-
-local function toggleTeamIgnore(teamName)
-	if ignoredTeams[teamName] then
-		ignoredTeams[teamName] = nil
-	else
-		ignoredTeams[teamName] = true
-	end
-	updateAllPlayers()
-end
-
 dropdown.MouseButton1Click:Connect(function()
+	teamDropdownOpen = not teamDropdownOpen
 	for _, obj in ipairs(menu:GetChildren()) do
-		if obj.Name == "TeamOption" then obj:Destroy() end
+	if obj.Name == "TeamOption" or obj.Name == "TeamDropdownScroll" then
+		obj:Destroy()
 	end
-	local y = 415
-	for _, team in ipairs(Teams:GetTeams()) do
-		local btn = Instance.new("TextButton", menu)
+end
+	if teamDropdownOpen then
+	local scrollFrame = Instance.new("ScrollingFrame")
+	scrollFrame.Name = "TeamDropdownScroll"
+	scrollFrame.Position = UDim2.new(0, 10, 0, 415)
+	scrollFrame.Size = UDim2.new(0, 200, 0, 100) -- Adjust height as needed
+	scrollFrame.CanvasSize = UDim2.new(0, 0, 0, #Teams:GetTeams() * 25)
+	scrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	scrollFrame.BorderSizePixel = 0
+	scrollFrame.ScrollBarThickness = 6
+	scrollFrame.Parent = menu
+
+	for i, team in ipairs(Teams:GetTeams()) do
+		local btn = Instance.new("TextButton")
 		btn.Name = "TeamOption"
-		btn.Position = UDim2.new(0, 10, 0, y)
-		btn.Size = UDim2.new(0, 200, 0, 20)
+		btn.Size = UDim2.new(1, 0, 0, 20)
+		btn.Position = UDim2.new(0, 0, 0, (i - 1) * 25)
 		btn.Text = (ignoredTeams[team.Name] and "[✔] " or "[  ] ") .. team.Name
-		btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+		btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 		btn.TextColor3 = Color3.new(1, 1, 1)
+		btn.Parent = scrollFrame
+
 		btn.MouseButton1Click:Connect(function()
-			toggleTeamIgnore(team.Name)
+			if ignoredTeams[team.Name] then
+				ignoredTeams[team.Name] = nil
+			else
+				ignoredTeams[team.Name] = true
+			end
 			btn.Text = (ignoredTeams[team.Name] and "[✔] " or "[  ] ") .. team.Name
-		end)
-		y += 25
-	end
-end)
-
-Players.PlayerAdded:Connect(function(p)
-	if p ~= LocalPlayer then
-		p.CharacterAdded:Connect(function()
-			task.wait(1)
-			if teamLabelsEnabled then createTeamLabel(p) end
-			applyHeadMod(p)
-		end)
-		p:GetPropertyChangedSignal("Team"):Connect(function()
-			applyHeadMod(p)
-			if teamLabelsEnabled then
-				removeTeamLabel(p)
-				createTeamLabel(p)
-			end
-		end)
-	end
-end)
-
-for _, p in ipairs(Players:GetPlayers()) do
-	if p ~= LocalPlayer then
-		p.CharacterAdded:Connect(function()
-			task.wait(1)
-			if teamLabelsEnabled then createTeamLabel(p) end
-			applyHeadMod(p)
-		end)
-		p:GetPropertyChangedSignal("Team"):Connect(function()
-			applyHeadMod(p)
-			if teamLabelsEnabled then
-				removeTeamLabel(p)
-				createTeamLabel(p)
-			end
+			updateAllPlayers()
 		end)
 	end
 end
+end)
 
-RunService.Heartbeat:Connect(updateAllPlayers)
+local function setupPlayer(player)
+	if player == LocalPlayer then return end
+
+	local function onCharacter(char)
+		char:WaitForChild("HumanoidRootPart", 3)
+		char:WaitForChild("Humanoid", 3)
+
+		if teamLabelsEnabled then
+			removeTeamLabel(player)
+			createTeamLabel(player)
+		end
+
+		applyHeadMod(player)
+	end
+
+	player.CharacterAdded:Connect(onCharacter)
+
+	if player.Character then
+		onCharacter(player.Character)
+	end
+
+	player:GetPropertyChangedSignal("Team"):Connect(function()
+		applyHeadMod(player)
+		if teamLabelsEnabled then
+			removeTeamLabel(player)
+			createTeamLabel(player)
+		end
+	end)
+end
+
+-- Set up existing players
+for _, p in ipairs(Players:GetPlayers()) do
+	setupPlayer(p)
+end
+
+-- New players
+Players.PlayerAdded:Connect(setupPlayer)
+
+local lastUpdate = 0
+local UPDATE_INTERVAL = 0.25
+
+RunService.Heartbeat:Connect(function(dt)
+	lastUpdate += dt
+	if lastUpdate >= UPDATE_INTERVAL then
+		lastUpdate = 0
+		task.defer(updateAllPlayers)
+
+		if teamLabelsEnabled then
+			local localChar = LocalPlayer.Character
+			local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+			if localRoot then
+				for _, p in ipairs(Players:GetPlayers()) do
+					if p ~= LocalPlayer then
+						local char = p.Character
+						local root = char and char:FindFirstChild("HumanoidRootPart")
+
+						if root then
+							local distance = (localRoot.Position - root.Position).Magnitude
+							local label = char:FindFirstChild("TeamLabel")
+
+							if distance <= 500 then
+								if not label then
+									createTeamLabel(p)
+								end
+							else
+								if label then
+									label:Destroy()
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+end)
